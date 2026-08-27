@@ -55,7 +55,7 @@ body{margin:0; background:var(--ground); color:var(--ink);
 .wrap{max-width:640px; margin:0 auto; padding:0 0 140px}
 
 /* sticky head */
-.top{position:sticky; top:0; z-index:20; background:var(--panel);
+.top{position:static; background:var(--panel);
   border-bottom:1px solid var(--rule); padding:12px 14px 10px;
   display:flex; flex-direction:column; gap:9px}
 h1{font-family:'Bitter',Georgia,serif; font-size:21px; font-weight:700; margin:0; letter-spacing:-.01em}
@@ -74,7 +74,7 @@ select,input[type=date]{font:inherit; font-size:16px; padding:8px 10px; border:1
 
 /* zones */
 .zone{margin:18px 0 0}
-.zhead{position:sticky; top:calc(44px + var(--stick,132px)); z-index:10;
+.zhead{position:sticky; top:0; z-index:10;
   font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.13em; text-transform:uppercase;
   padding:7px 14px; display:flex; justify-content:space-between; align-items:center; font-weight:600}
 .zhead.Freezer{background:var(--freezer-soft); color:var(--freezer)}
@@ -479,10 +479,21 @@ function render(){
   totals();
 }
 
+// A pack size is a label on a shelf, not a lab result. The sub-kilo branches
+// used to print the raw number, and because most of these sizes are pound
+// conversions (1 lb = 453.59237 g) staff were reading "1 crust = 147.41752025 g"
+// and "1 bag = 453.59237 g" — 19 distinct items on the Mash list alone. The
+// over-1000 branch already rounded, which is why only the small packs looked
+// mad. Nobody counts to a hundred-millionth of a gram, so round: whole units
+// from 10 up, one decimal below that where it might actually matter.
+function trim(n){
+  const v = Math.abs(+n) >= 10 ? Math.round(+n) : Math.round(+n * 10) / 10;
+  return String(v);
+}
 function fmtQty(q, uom){
   if (uom === 'EA') return (+q) + ' ea';
-  if (uom === 'ML') return (+q) >= 1000 ? (q/1000).toFixed(2).replace(/\.?0+$/,'') + ' L' : q + ' ml';
-  return (+q) >= 1000 ? (q/1000).toFixed(2).replace(/\.?0+$/,'') + ' kg' : q + ' g';
+  if (uom === 'ML') return (+q) >= 1000 ? (q/1000).toFixed(2).replace(/\.?0+$/,'') + ' L' : trim(q) + ' ml';
+  return (+q) >= 1000 ? (q/1000).toFixed(2).replace(/\.?0+$/,'') + ' kg' : trim(q) + ' g';
 }
 
 function counted(sku){
