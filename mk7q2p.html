@@ -626,10 +626,14 @@ function drawExtras(){
 
   const why = document.createElement('div');
   why.className = 'why xwhy';
-  why.innerHTML = 'Anything thrown out, moved to another store, or prepped into a batch '
-    + 'leaves without a sale. <b>If nobody writes it down it comes back later as an '
-    + 'unexplained gap</b> in a count, and the kitchen gets blamed for it. This tab can be '
-    + 'sent on its own — you do not have to count anything to report a dumped case.';
+  // The old wording said prepping a batch "leaves without a sale", which is not
+  // true of most batches: selling a Bruschetta Bread already removes the mix's
+  // tomatoes. Only the batches on the MADE list below are unaccounted for, and
+  // the list is now just those.
+  why.innerHTML = 'Anything thrown out or moved to another store leaves without a sale. '
+    + '<b>If nobody writes it down it comes back later as an unexplained gap</b> in a '
+    + 'count, and the kitchen gets blamed for it. This tab can be sent on its own — you '
+    + 'do not have to count anything to report a dumped case.';
   box.appendChild(why);
 
   const items = itemOptions();
@@ -659,8 +663,30 @@ function drawExtras(){
   }, () => ({ sku:'', name:'', cases:'', eaches:'', direction:'', other:'', note:'' })));
 
   // MADE
+  //
+  // Short list on purpose. Most batches are consumed by dishes that get sold, so
+  // the sale already removes their ingredients and logging the prep would change
+  // no number at all — the owner spotted that on 2026-08-27. Only batches that
+  // nothing sold accounts for reach this list; today that is croutons out of
+  // spare dough, whose flour otherwise reads as shrink.
+  // A sheet whose concept has no batches worth logging gets no MADE section at
+  // all. An empty picker reads as something broken, and the brewpub genuinely
+  // has nothing here.
+  if (!SUBS.length) return;
+  const madeWhy = document.createElement('div');
+  madeWhy.className = 'why xwhy';
+  madeWhy.innerHTML = '<b>Only the batches listed here.</b> Everything else you prep '
+    + '&mdash; dough, garlic butter, bruschetta mix &mdash; is already accounted for when '
+    + 'the pizza or the sandwich sells, so logging it changes nothing. What is below is '
+    + 'made out of stock that no sale ever pays for, so if it is not written down it looks '
+    + 'like the food went missing.';
+  box.appendChild(madeWhy);
   box.appendChild(section('Made', 'prep', extras.prep, (rowObj, host) => {
-    host.appendChild(field('batch', mkSelect(SUBS.map(s => [s, s]), rowObj.batch,
+    host.appendChild(field('batch', mkSelect(SUBS.map(s => {
+      // Bundled (manager) sheets carry [name, concept] pairs; the staff lists are
+      // filtered to plain names before they are published.
+      const n = Array.isArray(s) ? s[0] : s; return [n, n];
+    }), rowObj.batch,
       v => { rowObj.batch = v; saveExtras(); }, 'which batch…')));
     host.appendChild(field('how many', mkNum(rowObj.batches, v => { rowObj.batches = v; saveExtras(); }, '1')));
     host.appendChild(field('note', mkText(rowObj.note, v => { rowObj.note = v; saveExtras(); }, 'optional')));
