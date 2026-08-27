@@ -55,7 +55,7 @@ body{margin:0; background:var(--ground); color:var(--ink);
 .wrap{max-width:640px; margin:0 auto; padding:0 0 140px}
 
 /* sticky head */
-.top{position:sticky; top:44px; z-index:20; background:var(--panel);
+.top{position:sticky; top:0; z-index:20; background:var(--panel);
   border-bottom:1px solid var(--rule); padding:12px 14px 10px;
   display:flex; flex-direction:column; gap:9px}
 h1{font-family:'Bitter',Georgia,serif; font-size:21px; font-weight:700; margin:0; letter-spacing:-.01em}
@@ -209,6 +209,7 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
   </div>
   <div class="row">
     <span class="seg" role="group" aria-label="Scope">
+      <button id="bSpot" aria-pressed="false">Daily spot</button>
       <button id="bWeek" aria-pressed="true">Weekly key</button>
       <button id="bFull" aria-pressed="false">Full count</button>
       <button id="bExtras" aria-pressed="false">Extras</button>
@@ -419,7 +420,9 @@ function ctx(){ return { store: el('store').value, date: el('date').value }; }
 function store(){ return DATA.find(s => s.store === el('store').value); }
 function rows(){
   const s = store();
-  if (!s || scope === 'extras') return [];
+  // 'spot' and 'extras' are not list scopes; returning rows here would let a
+  // spot-only visit be graded as an under-counted weekly list.
+  if (!s || scope === 'extras' || scope === 'spot') return [];
   return s.items.filter(i => scope === 'full' || i[9] === 1);
 }
 
@@ -514,15 +517,20 @@ function extrasCount(){ return extras.waste.length + extras.transfers.length + e
 function totals(){
   const rs = rows();
   const done = rs.filter(i => counted(i[0]));
-  const pct = rs.length ? Math.round(100 * done.length / rs.length) : 0;
+  let pct = rs.length ? Math.round(100 * done.length / rs.length) : 0;
+  if (scope === 'spot') pct = spotAnswered() ? 100 : 0;
   el('meter').style.width = pct + '%';
   el('prog').textContent = scope === 'extras'
     ? extrasCount() + ' extra' + (extrasCount() === 1 ? '' : 's') + ' logged'
-    : done.length + ' of ' + rs.length + ' counted';
+    : scope === 'spot'
+      // On the spot tab "0 of 0 counted" would read as a broken page. The daily
+      // check is one item, so say so.
+      ? (spotAnswered() ? 'today\u2019s item answered' : 'one item, about 20 seconds')
+      : done.length + ' of ' + rs.length + ' counted';
 
   const spendAll = rs.reduce((a, i) => a + (+i[8]), 0);
   const spendDone = done.reduce((a, i) => a + (+i[8]), 0);
-  el('spendcov').textContent = (scope !== 'extras' && spendAll)
+  el('spendcov').textContent = (scope !== 'extras' && scope !== 'spot' && spendAll)
     ? Math.round(100 * spendDone / spendAll) + '% of the money on this list'
     : '';
 
@@ -531,6 +539,9 @@ function totals(){
     r.innerHTML = extrasCount()
       ? extrasCount() + ' item' + (extrasCount() === 1 ? '' : 's') + ' to report<b>waste, moves, batches</b>'
       : 'Nothing logged yet<b>&mdash;</b>';
+  } else if (scope === 'spot') {
+    r.innerHTML = spotAnswered() ? 'Answered<b>hit Finish &mdash; that is the whole job</b>'
+                                 : 'Count the one item above<b>&mdash;</b>';
   } else if (!done.length) {
     r.innerHTML = spotAnswered() ? 'Spot check answered<b>ready to file</b>'
                                  : 'Nothing counted yet<b>&mdash;</b>';
@@ -681,7 +692,11 @@ function drawExtras(){
 // a full one turns uncounted shelves into missing food.
 function filedScope(){
   if (scope === 'extras') return 'extras';
+  if (scope === 'spot') return 'spot';
   const done = rows().filter(i => counted(i[0]));
+  // Still possible to file a spot-only submission from a list tab: somebody who
+  // answered the spot check first and then opened the weekly list without
+  // counting anything has done exactly one thing, and that is what gets filed.
   if (!done.length && spotAnswered()) return 'spot';
   return scope === 'full' ? 'full' : 'weekly';
 }
@@ -920,18 +935,36 @@ async function boot(){
   };
   sel.addEventListener('change', reload);
   el('date').addEventListener('change', reload);
+  // THE DAILY SPOT CHECK IS ITS OWN TAB.
+  //
+  // It used to sit as a green panel above the weekly list, and the owner said
+  // on 2026-08-27 that filing only the spot check did not feel like a complete
+  // action — "i still think maybe daily spot check needs a separate tab". He was
+  // right: it is the ONLY task that happens every day, and burying it above a
+  // 26-line list made the most frequent job look like a preamble to a bigger
+  // one. On its own tab the list is hidden, so answering one item and hitting
+  // Finish is visibly the whole job.
+  //
+  // Tab order is by how often each is used: daily, weekly, monthly, ad hoc.
   const seg = (which) => {
     scope = which;
-    for (const [id, val] of [['bWeek','week'], ['bFull','full'], ['bExtras','extras']])
+    for (const [id, val] of [['bSpot','spot'], ['bWeek','week'], ['bFull','full'], ['bExtras','extras']])
       el(id).setAttribute('aria-pressed', String(val === which));
-    el('spot').hidden = which === 'extras';
-    el('list').hidden = which === 'extras';
-    render(); drawExtras(); drawDeliv();
+    // The spot panel shows on its own tab and NOT over the lists any more.
+    el('spot').hidden = which !== 'spot';
+    el('list').hidden = which === 'extras' || which === 'spot';
+    render(); drawExtras(); drawDeliv(); drawSpot();
   };
+  el('bSpot').addEventListener('click', () => seg('spot'));
   el('bWeek').addEventListener('click', () => seg('week'));
   el('bFull').addEventListener('click', () => seg('full'));
   el('bExtras').addEventListener('click', () => seg('extras'));
   el('bClear').addEventListener('click', () => {
+    if (scope === 'spot') {
+      if (!spotAnswered()) return;
+      spotState = {}; save('hhbc.spot.' + ctx().store + '.' + ctx().date, spotState);
+      drawSpot(); totals(); return;
+    }
     if (scope === 'extras') {
       if (!extrasCount()) return;
       extras = { waste: [], transfers: [], prep: [] }; saveExtras(); drawExtras(); return;
