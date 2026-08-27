@@ -1,0 +1,1035 @@
+<title>Mash Count</title>
+<meta name="robots" content="noindex,nofollow,noarchive">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bitter:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#F1F3F0; --panel:#FFFFFF; --panel-2:#F7F9F6; --raise:#FFFFFF;
+  --ink:#14201C; --muted:#5E6B65; --faint:#899690;
+  --rule:#D5DBD6; --rule-2:#E7ECE7;
+  --accent:#4A7A2B; --accent-soft:#EAF2E1; --accent-ink:#FFFFFF;
+  --crit:#A4322A; --crit-soft:#F7E6E4;
+  --warn:#9E6A12; --warn-soft:#F8EFDE;
+  --good:#2E6B4C; --good-soft:#E4F1EA;
+  --freezer:#2E5E80; --freezer-soft:#E3EDF5;
+  --cooler:#2E6B4C; --cooler-soft:#E4F1EA;
+  --dry:#8A6A24; --dry-soft:#F6EEDD;
+  --field:#FFFFFF; --field-rule:#BFC9C1;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0F1513; --panel:#161E1B; --panel-2:#1B2421; --raise:#1E2723;
+    --ink:#E7EDE8; --muted:#93A09A; --faint:#6C7975;
+    --rule:#2A3531; --rule-2:#222C29;
+    --accent:#93C463; --accent-soft:#1E2B18; --accent-ink:#0F1513;
+    --crit:#E68B82; --crit-soft:#2E1917;
+    --warn:#DDA94F; --warn-soft:#2B2113;
+    --good:#7FC49F; --good-soft:#17281F;
+    --freezer:#83B4D8; --freezer-soft:#16242E;
+    --cooler:#7FC49F; --cooler-soft:#17281F;
+    --dry:#D6B368; --dry-soft:#291F10;
+    --field:#0C110F; --field-rule:#3B4742;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0F1513; --panel:#161E1B; --panel-2:#1B2421; --raise:#1E2723;
+  --ink:#E7EDE8; --muted:#93A09A; --faint:#6C7975;
+  --rule:#2A3531; --rule-2:#222C29;
+  --accent:#93C463; --accent-soft:#1E2B18; --accent-ink:#0F1513;
+  --crit:#E68B82; --crit-soft:#2E1917;
+  --warn:#DDA94F; --warn-soft:#2B2113;
+  --good:#7FC49F; --good-soft:#17281F;
+  --freezer:#83B4D8; --freezer-soft:#16242E;
+  --cooler:#7FC49F; --cooler-soft:#17281F;
+  --dry:#D6B368; --dry-soft:#291F10;
+  --field:#0C110F; --field-rule:#3B4742;
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+body{margin:0; background:var(--ground); color:var(--ink);
+  font-family:'IBM Plex Sans',system-ui,-apple-system,sans-serif; font-size:16px; line-height:1.45;}
+.wrap{max-width:640px; margin:0 auto; padding:0 0 140px}
+
+/* sticky head */
+.top{position:sticky; top:44px; z-index:20; background:var(--panel);
+  border-bottom:1px solid var(--rule); padding:12px 14px 10px;
+  display:flex; flex-direction:column; gap:9px}
+h1{font-family:'Bitter',Georgia,serif; font-size:21px; font-weight:700; margin:0; letter-spacing:-.01em}
+.row{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+.grow{flex:1 1 auto; min-width:0}
+select,input[type=date]{font:inherit; font-size:15px; padding:8px 10px; border:1px solid var(--field-rule);
+  background:var(--field); color:var(--ink); border-radius:4px; width:100%}
+.seg{display:inline-flex; border:1px solid var(--field-rule); border-radius:4px; overflow:hidden}
+.seg button{font:inherit; font-size:13.5px; font-weight:500; padding:8px 13px; border:0;
+  background:var(--field); color:var(--muted); cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--accent); color:var(--accent-ink)}
+.meter{height:6px; background:var(--rule-2); border-radius:3px; overflow:hidden}
+.meter i{display:block; height:100%; background:var(--accent); width:0; transition:width .2s}
+.stat{font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--muted);
+  display:flex; justify-content:space-between; gap:10px; font-variant-numeric:tabular-nums}
+
+/* zones */
+.zone{margin:18px 0 0}
+.zhead{position:sticky; top:calc(44px + var(--stick,132px)); z-index:10;
+  font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.13em; text-transform:uppercase;
+  padding:7px 14px; display:flex; justify-content:space-between; align-items:center; font-weight:600}
+.zhead.Freezer{background:var(--freezer-soft); color:var(--freezer)}
+.zhead.Cooler{background:var(--cooler-soft); color:var(--cooler)}
+.zhead[class*="Dry"]{background:var(--dry-soft); color:var(--dry)}
+
+/* rows */
+.item{border-bottom:1px solid var(--rule-2); background:var(--panel); padding:10px 14px;
+  display:grid; grid-template-columns:1fr auto; gap:4px 10px; align-items:center}
+.item.done{background:var(--accent-soft)}
+.nm{font-size:14.5px; font-weight:500; line-height:1.3}
+.sub{grid-column:1/2; font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--faint)}
+.fields{grid-column:2/3; grid-row:1/3; display:flex; gap:6px; align-items:center}
+.fld{display:flex; flex-direction:column; align-items:center; gap:2px}
+.fld input{font:inherit; font-family:'IBM Plex Mono',monospace; font-size:17px; font-weight:500;
+  width:62px; text-align:center; padding:9px 4px; border:1px solid var(--field-rule);
+  background:var(--field); color:var(--ink); border-radius:4px; -moz-appearance:textfield}
+.fld input::-webkit-outer-spin-button,.fld input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.fld input:focus{outline:2px solid var(--accent); outline-offset:-1px; border-color:var(--accent)}
+.fld input.has{border-color:var(--accent); font-weight:600}
+.fld span{font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--faint)}
+
+/* footer bar */
+.bar{position:fixed; left:0; right:0; bottom:0; z-index:30; background:var(--panel);
+  border-top:1px solid var(--rule); padding:10px 14px calc(10px + env(safe-area-inset-bottom));
+  display:flex; gap:9px; align-items:center}
+.bar .val{font-family:'IBM Plex Mono',monospace; font-size:12.5px; color:var(--muted); flex:1 1 auto;
+  font-variant-numeric:tabular-nums; line-height:1.25}
+.bar .val b{display:block; color:var(--ink); font-size:16px; font-weight:600}
+button.go{font:inherit; font-weight:600; font-size:15px; padding:12px 18px; border:0; border-radius:5px;
+  background:var(--accent); color:var(--accent-ink); cursor:pointer}
+button.go[disabled]{background:var(--rule); color:var(--faint); cursor:default}
+button.ghost{font:inherit; font-size:13.5px; padding:10px 12px; border:1px solid var(--field-rule);
+  border-radius:5px; background:var(--field); color:var(--ink); cursor:pointer}
+
+/* note + sheet */
+.note{padding:11px 14px; color:var(--muted); font-size:13.5px; background:var(--panel-2);
+  border-bottom:1px solid var(--rule-2)}
+.note b{color:var(--ink)}
+.note summary{cursor:pointer; color:var(--ink); font-weight:600; font-size:13.5px;
+  list-style:none; display:flex; gap:7px; align-items:baseline}
+.note summary::-webkit-details-marker{display:none}
+.note summary::after{content:'why'; margin-left:auto; font-family:'IBM Plex Mono',monospace;
+  font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent)}
+.note[open] summary::after{content:'hide'}
+.note span{display:block; margin-top:7px}
+.spot{margin:0; padding:13px 14px; background:var(--accent-soft); border-bottom:1px solid var(--rule-2);
+  display:flex; flex-direction:column; gap:9px}
+.spot .lbl{font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--accent); font-weight:600}
+.spot .nm{font-size:16px; font-weight:600; line-height:1.25}
+.spot .sub{font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:var(--muted)}
+.spot .fields{display:flex; gap:8px; align-items:center}
+.spot .why{font-size:12.5px; color:var(--muted)}
+.spot.done{background:var(--good-soft)}
+.callout{margin:0; padding:12px 14px; font-size:13.5px; border-left:3px solid var(--warn);
+  background:var(--warn-soft)}
+dialog{border:0; border-radius:8px; padding:0; max-width:min(560px,94vw); width:100%;
+  background:var(--panel); color:var(--ink)}
+dialog::backdrop{background:rgba(0,0,0,.55)}
+.dlg{padding:18px; display:flex; flex-direction:column; gap:13px}
+.dlg h2{font-family:'Bitter',serif; font-size:19px; margin:0}
+.dlg pre{font-family:'IBM Plex Mono',monospace; font-size:11.5px; line-height:1.5; margin:0;
+  white-space:pre-wrap; word-break:break-word; background:var(--panel-2); border:1px solid var(--rule);
+  border-radius:5px; padding:12px; max-height:46vh; overflow:auto}
+.dlg .row{justify-content:flex-end}
+.ok{color:var(--good); font-size:13px}
+.err{color:var(--crit); font-size:13px}
+</style>
+<style>
+.appbar{position:sticky;top:0;z-index:60;background:var(--panel);border-bottom:1px solid var(--rule);
+  display:flex;align-items:center;gap:4px;padding:0 14px;height:46px;
+  backdrop-filter:saturate(1.6) blur(8px)}
+.appbar .mark{font-family:'Bitter',Georgia,serif;font-weight:700;font-size:14.5px;
+  letter-spacing:-.01em;margin-right:14px;white-space:nowrap;color:var(--ink);text-decoration:none}
+.appbar .mark i{font-style:normal;color:var(--accent)}
+.appbar nav{display:flex;gap:2px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.appbar a.nv{font-size:13.5px;font-weight:500;color:var(--muted);text-decoration:none;
+  padding:7px 11px;border-radius:5px;white-space:nowrap;line-height:1}
+.appbar a.nv:hover{background:var(--panel-2);color:var(--ink)}
+.appbar a.nv[aria-current=page]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.appbar .who{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:10.5px;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--faint);white-space:nowrap}
+@media (max-width:700px){.appbar{padding:0 10px;height:44px}.appbar .who{display:none}
+  .appbar .mark{margin-right:8px;font-size:13.5px}}
+.xsec{margin:0 0 18px}
+.xrow{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:flex-end;
+  padding:10px 12px;border-bottom:1px solid var(--line)}
+.xf{display:flex;flex-direction:column;gap:3px;flex:1 1 120px;min-width:0}
+.xf>span{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)}
+.xf input,.xf select{width:100%;min-width:0;box-sizing:border-box;font:inherit;
+  padding:9px 8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:inherit}
+.xf select{-webkit-appearance:none;appearance:none;
+  background-image:linear-gradient(45deg,transparent 50%,var(--faint) 50%),
+    linear-gradient(135deg,var(--faint) 50%,transparent 50%);
+  background-position:calc(100% - 15px) 52%,calc(100% - 10px) 52%;
+  background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:28px}
+.xadd{margin:10px 12px 0}
+.xdel{flex:0 0 auto;align-self:flex-end}
+.xwhy{margin:0 0 16px}
+#who{width:100%;box-sizing:border-box;font:inherit;padding:9px 10px;
+  border:1px solid var(--line);border-radius:8px;background:var(--bg);color:inherit}
+.pending{margin:0 0 14px;padding:10px 12px;border-radius:8px;font-size:13px;
+  background:color-mix(in srgb,var(--ok,#1c7c3f) 10%,transparent);
+  border:1px solid color-mix(in srgb,var(--ok,#1c7c3f) 35%,transparent)}
+.warn{color:#b3541e}
+</style>
+
+
+<div class="wrap">
+
+<div class="top" id="top">
+  <h1>Count sheet</h1>
+  <div class="row" style="flex-wrap:nowrap">
+    <span class="grow" style="min-width:0"><select id="store" aria-label="Store"></select></span>
+    <span style="flex:0 0 136px"><input type="date" id="date" aria-label="Count date"></span>
+  </div>
+  <div class="row" style="flex-wrap:nowrap">
+    <span class="grow" style="min-width:0"><input type="text" id="who" autocomplete="name"
+      placeholder="Your name" aria-label="Who counted"></span>
+  </div>
+  <div class="row" id="delivRow" style="display:none">
+    <span class="grow" style="min-width:0">
+      <div id="delivQ" style="font-size:13px;margin-bottom:6px"></div>
+      <span class="seg" role="group" aria-label="Today's delivery">
+        <button id="bDelivCounted" aria-pressed="false">Yes &mdash; it&rsquo;s counted</button>
+        <button id="bDelivAfter" aria-pressed="false">Not yet / came after</button>
+        <button id="bDelivNone" aria-pressed="false">No delivery</button>
+      </span>
+    </span>
+  </div>
+  <div class="row">
+    <span class="seg" role="group" aria-label="Scope">
+      <button id="bWeek" aria-pressed="true">Weekly key</button>
+      <button id="bFull" aria-pressed="false">Full count</button>
+      <button id="bExtras" aria-pressed="false">Extras</button>
+    </span>
+    <span class="grow"></span>
+    <button class="ghost" id="bClear" type="button">Clear</button>
+  </div>
+  <div class="meter"><i id="meter"></i></div>
+  <div class="stat"><span id="prog">—</span><span id="spendcov">—</span></div>
+</div>
+
+<details class="note" id="firstNote"><summary></summary><span></span></details>
+
+<div class="pending" id="pendingNote" hidden></div>
+
+<div id="spot"></div>
+
+<div id="list"></div>
+
+<div id="extras" hidden></div>
+
+<div class="bar">
+  <span class="val" id="running">Nothing counted yet<b>&mdash;</b></span>
+  <button class="go" id="bDone" type="button" disabled>Finish</button>
+</div>
+
+</div>
+
+<dialog id="dlg"><div class="dlg">
+  <h2 id="dlgTitle">Count complete</h2>
+  <p id="dlgNote" style="margin:0;color:var(--muted);font-size:13.5px"></p>
+  <pre id="out"></pre>
+  <div class="row">
+    <span class="grow"><span id="saveState" class="ok"></span></span>
+    <button class="ghost" id="bCopy" type="button">Copy</button>
+    <button class="go" id="bClose" type="button">Close</button>
+  </div>
+</div></dialog>
+
+<script>
+const FIRST_COUNT_DONE = [];
+let SPOT = [];
+let DELIV = [];
+let DATA = [];
+let SUBS = [];
+
+// ---------------------------------------------------------------------------
+// WHO THIS COPY OF THE SHEET IS FOR.
+// The build script (scripts/build-count-sheets.ts) rewrites this one line to
+// produce the manager sheet and the two staff sheets from this single source.
+// stores: null means every store in DATA; an array restricts the dropdown, so
+// a Mash manager cannot file a count against the brewpub by mis-tapping.
+// ---------------------------------------------------------------------------
+const SHEET = { audience: "staff", name: "mash", stores: ["chestermere","greenwich","kensington","legacy","mahogany","st-albert","whyte-ave"], source: "remote" };
+
+// Where a finished count goes. This is the PUBLISHABLE key: it is designed to
+// sit in a browser, and the table grants anon INSERT and nothing else — no
+// select, no update, no delete — so a person holding this page can add a count
+// and cannot read anyone else's or remove their own. Verified 2026-08-26:
+// insert 201, select 401, delete 401, unknown store 400.
+const FILE_URL = 'https://xlfftftvvxwyjtzletue.supabase.co/rest/v1/count_submissions';
+const FILE_KEY = 'sb_publishable_uCUJqLZuiBa76Dof1OiebA_duOsh0LB';
+
+const WASTE_REASONS = [['spoilage','spoiled'], ['error','kitchen error'],
+  ['comp','comped'], ['staff_meal','staff meal'], ['training','training'],
+  ['breakage','breakage']];
+
+// WHERE THE ITEM LIST COMES FROM.
+//
+// The manager sheet carries its list inside the file ('bundled'): it is one
+// self-contained page that works with no network at all. The staff sheets are
+// hosted elsewhere and fetch the list from the database ('remote'), which is
+// what stops the page needing a redeploy every time a SKU changes — the
+// morning run updates one row and every phone picks it up.
+//
+// THE CACHE IS NOT AN OPTIMISATION. Walk-ins kill phone signal. A counter who
+// opens the sheet standing next to the cheese must get the list they used last
+// week, not a spinner, so the last good list is kept on the phone and shown
+// FIRST; the network refresh happens behind it. A sheet that only works with
+// four bars is a sheet nobody uses twice.
+// Storage, not a table: the bucket is already public, needs no key and no
+// row-level policy, and Supabase serves JSON honestly. (It mangles HTML on
+// purpose — see README-RESUME — but only HTML.) The morning run overwrites
+// one object and every phone picks up the new list.
+const LIST_URL = 'https://xlfftftvvxwyjtzletue.supabase.co/storage/v1/object/public/sheets/count-staff-';
+
+function applyList(d){
+  DATA = d.stores || [];
+  SUBS = d.subs || [];
+  SPOT = d.spot || [];
+  // Delivery weekdays per store. Absent on an older published list, which is
+  // why the question falls back to being asked rather than skipped: a missing
+  // schedule must not silently stop the question on a real delivery day.
+  DELIV = d.deliv || [];
+}
+
+async function loadList(){
+  const ck = 'hhbc.list.' + SHEET.name;
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem(ck) || 'null'); } catch (e) {}
+  if (cached) applyList(cached);
+  try {
+    const r = await fetch(LIST_URL + encodeURIComponent(SHEET.name) + '.json?t=' + Date.now());
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const body = await r.json();
+    const d = body.data || body;
+    if (!(d.stores || []).length) throw new Error('the published list is empty');
+    applyList(d);
+    try { localStorage.setItem(ck, JSON.stringify(d)); } catch (e) {}
+    return { state: 'fresh' };
+  } catch (e) {
+    return { state: cached ? 'cached' : 'failed', why: e.message };
+  }
+}
+
+// Per-viewer, per-store, per-date. A count gets interrupted — a delivery
+// arrives, the phone locks, someone needs the manager on the line — and losing
+// twenty minutes of counting once is enough to end a count programme. Wrapped
+// because storage throws outright in some viewer contexts.
+const KEY = d => 'hhbc.count.' + d.store + '.' + d.date;
+const XKEY = d => 'hhbc.extras.' + d.store + '.' + d.date;
+function load(k){ try { return JSON.parse(localStorage.getItem(k) || '{}'); } catch (e) { return {}; } }
+function save(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+
+const el = id => document.getElementById(id);
+let scope = 'week';
+let state = {};
+// Held in memory as well as in storage. localStorage throws outright in some
+// contexts — a private window, a browser set to block site data, a preview with
+// no origin — and load() returning {} each time would mean a spot answer typed
+// on such a device vanished before the report was built. Storage is the
+// durability layer, not the source of truth.
+let spotState = {};
+let extras = { waste: [], transfers: [], prep: [] };
+
+function today(){
+  // Not Date.now-free by choice: the sheet runs in a browser, and the count
+  // date has to default to the day the manager is standing there.
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+
+// ===================================================================
+// A DELIVERY DATED THE SAME DAY AS THE COUNT
+//
+// The owner worked this out on 2026-08-27: if an invoice is dated today and
+// the truck came AFTER the count, the books treat the count as though it
+// already included the delivery. It was worse than that -- the same-day
+// invoice was excluded from the count's expectation AND from the carry-forward,
+// so it vanished, and always as a SURPLUS, the direction nobody investigates.
+// Migration 131 fixes the arithmetic; this is the one thing the arithmetic
+// cannot know. GFS supplies a date and no time, so no clock can settle it.
+// The person holding the clipboard is the only witness.
+//
+// Asked only on that store's own delivery weekdays, so it appears on one or
+// two counts a week instead of every one. If the schedule is missing or the
+// store is not in it, the question IS shown: a needless tap costs nothing and
+// a skipped one costs a whole truck in the gap.
+// ===================================================================
+let delivState = null;
+
+function delivDows(storeCode){
+  const hit = (DELIV || []).filter(d => d.store === storeCode);
+  return hit.length ? hit.map(d => d.dow) : null;   // null = schedule unknown
+}
+
+function isDeliveryDay(){
+  const c = ctx();
+  if (!c.store || !c.date) return false;
+  const dows = delivDows(c.store);
+  if (dows === null) return true;                    // unknown -> ask anyway
+  // Parse as local, not UTC: new Date('2026-08-28') is midnight UTC and can
+  // land on the previous weekday west of Greenwich, which would ask the
+  // question on the wrong day.
+  const p = c.date.split('-').map(Number);
+  return dows.indexOf(new Date(p[0], p[1] - 1, p[2]).getDay()) >= 0;
+}
+
+function drawDeliv(){
+  const show = isDeliveryDay() && scope !== 'extras';
+  el('delivRow').style.display = show ? '' : 'none';
+  if (!show) return;
+  const dows = delivDows(ctx().store);
+  el('delivQ').textContent = dows === null
+    ? 'Did a delivery come in today, and is it counted?'
+    : 'Today is a delivery day. Is today\u2019s delivery put away and included in this count?';
+  const map = { counted: 'bDelivCounted', after: 'bDelivAfter', none: 'bDelivNone' };
+  for (const k in map)
+    el(map[k]).setAttribute('aria-pressed', delivState === k ? 'true' : 'false');
+}
+
+function setDeliv(v){
+  delivState = (delivState === v) ? null : v;   // tapping again clears it
+  try { localStorage.setItem('hhbc.deliv.' + ctx().store + '.' + ctx().date, delivState || ''); } catch (e) {}
+  drawDeliv();
+}
+
+function loadDeliv(){
+  delivState = null;
+  try {
+    const v = localStorage.getItem('hhbc.deliv.' + ctx().store + '.' + ctx().date);
+    if (v === 'counted' || v === 'after' || v === 'none') delivState = v;
+  } catch (e) {}
+}
+
+function ctx(){ return { store: el('store').value, date: el('date').value }; }
+function store(){ return DATA.find(s => s.store === el('store').value); }
+function rows(){
+  const s = store();
+  if (!s || scope === 'extras') return [];
+  return s.items.filter(i => scope === 'full' || i[9] === 1);
+}
+
+function fmt(n){ return n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}); }
+
+function render(){
+  const list = el('list');
+  list.textContent = '';
+  const rs = rows();
+  let zone = null, wrap = null;
+  for (const it of rs) {
+    const [sku, name, z, caseLabel, eachLabel, basePerCase, basePerEach, baseUom, spend] = it;
+    if (z !== zone) {
+      zone = z;
+      const h = document.createElement('div');
+      h.className = 'zhead ' + z.replace(/\s+/g, '-');
+      const n = rs.filter(r => r[2] === z).length;
+      h.innerHTML = '<span>' + z + '</span><span>' + n + ' item' + (n === 1 ? '' : 's') + '</span>';
+      list.appendChild(h);
+      wrap = document.createElement('div');
+      list.appendChild(wrap);
+    }
+    const row = document.createElement('div');
+    row.className = 'item';
+    row.dataset.sku = sku;
+
+    const nm = document.createElement('div');
+    nm.className = 'nm'; nm.textContent = name;
+    const sub = document.createElement('div');
+    sub.className = 'sub';
+    sub.textContent = sku + ' · 1 ' + caseLabel + ' = ' + fmtQty(basePerCase, baseUom)
+      + (basePerEach && basePerEach !== basePerCase ? ' · 1 ' + eachLabel + ' = ' + fmtQty(basePerEach, baseUom) : '');
+
+    const fields = document.createElement('div');
+    fields.className = 'fields';
+    for (const [kind, label] of [['c', caseLabel], ['e', eachLabel]]) {
+      if (kind === 'e' && (!basePerEach || basePerEach === basePerCase)) continue;
+      const f = document.createElement('div'); f.className = 'fld';
+      const inp = document.createElement('input');
+      inp.type = 'text'; inp.inputMode = 'decimal'; inp.autocomplete = 'off';
+      inp.setAttribute('aria-label', name + ' ' + label);
+      inp.dataset.kind = kind;
+      const cur = state[sku] || {};
+      if (cur[kind] != null && cur[kind] !== '') { inp.value = cur[kind]; inp.classList.add('has'); }
+      inp.addEventListener('input', () => onEntry(row, sku, kind, inp));
+      const lab = document.createElement('span'); lab.textContent = label;
+      f.appendChild(inp); f.appendChild(lab); fields.appendChild(f);
+    }
+
+    row.appendChild(nm); row.appendChild(sub); row.appendChild(fields);
+    if (counted(sku)) row.classList.add('done');
+    wrap.appendChild(row);
+  }
+  totals();
+}
+
+function fmtQty(q, uom){
+  if (uom === 'EA') return (+q) + ' ea';
+  if (uom === 'ML') return (+q) >= 1000 ? (q/1000).toFixed(2).replace(/\.?0+$/,'') + ' L' : q + ' ml';
+  return (+q) >= 1000 ? (q/1000).toFixed(2).replace(/\.?0+$/,'') + ' kg' : q + ' g';
+}
+
+function counted(sku){
+  const v = state[sku];
+  if (!v) return false;
+  return (v.c != null && v.c !== '') || (v.e != null && v.e !== '');
+}
+
+function onEntry(row, sku, kind, inp){
+  // Anything that is not a number is discarded rather than stored as text — a
+  // count line that reads "half a bag" cannot be turned into grams later.
+  const raw = inp.value.replace(/[^0-9.]/g, '');
+  if (raw !== inp.value) inp.value = raw;
+  state[sku] = state[sku] || {};
+  state[sku][kind] = raw;
+  inp.classList.toggle('has', raw !== '');
+  row.classList.toggle('done', counted(sku));
+  save(KEY(ctx()), state);
+  totals();
+}
+
+function lineValue(it){
+  const [sku,,,,, basePerCase, basePerEach,,, ] = it;
+  const v = state[sku]; if (!v) return null;
+  const c = parseFloat(v.c || '0') || 0, e = parseFloat(v.e || '0') || 0;
+  return c * (+basePerCase) + e * (+(basePerEach || 0));
+}
+
+function spotAnswered(){ return !!(spotState.c || spotState.e); }
+function extrasCount(){ return extras.waste.length + extras.transfers.length + extras.prep.length; }
+
+function totals(){
+  const rs = rows();
+  const done = rs.filter(i => counted(i[0]));
+  const pct = rs.length ? Math.round(100 * done.length / rs.length) : 0;
+  el('meter').style.width = pct + '%';
+  el('prog').textContent = scope === 'extras'
+    ? extrasCount() + ' extra' + (extrasCount() === 1 ? '' : 's') + ' logged'
+    : done.length + ' of ' + rs.length + ' counted';
+
+  const spendAll = rs.reduce((a, i) => a + (+i[8]), 0);
+  const spendDone = done.reduce((a, i) => a + (+i[8]), 0);
+  el('spendcov').textContent = (scope !== 'extras' && spendAll)
+    ? Math.round(100 * spendDone / spendAll) + '% of the money on this list'
+    : '';
+
+  const r = el('running');
+  if (scope === 'extras') {
+    r.innerHTML = extrasCount()
+      ? extrasCount() + ' item' + (extrasCount() === 1 ? '' : 's') + ' to report<b>waste, moves, batches</b>'
+      : 'Nothing logged yet<b>&mdash;</b>';
+  } else if (!done.length) {
+    r.innerHTML = spotAnswered() ? 'Spot check answered<b>ready to file</b>'
+                                 : 'Nothing counted yet<b>&mdash;</b>';
+  } else {
+    r.innerHTML = done.length + ' line' + (done.length === 1 ? '' : 's') + ' entered<b>'
+      + pct + '% of the walk done</b>';
+  }
+  // THE FINISH BUTTON IS LIVE IF THERE IS ANYTHING AT ALL TO FILE.
+  // It used to test the main list only, so a manager who did the daily spot
+  // check and nothing else had no way to send it — the owner hit exactly that
+  // and assumed the page was broken. A spot check on its own is a real
+  // submission, and so is an extras-only Tuesday.
+  el('bDone').disabled = !(done.length || spotAnswered() || extrasCount());
+}
+
+// --- Extras: thrown out, moved, made ---------------------------------------
+// Everything here leaves the building without a sale, and nothing else in the
+// system knows it happened. Unrecorded, it comes back weeks later as an
+// unexplained gap in a count and gets blamed on whoever was on shift.
+function itemOptions(){
+  const s = store();
+  return s ? s.items.map(i => [i[0], i[1]]) : [];
+}
+
+function saveExtras(){ save(XKEY(ctx()), extras); totals(); }
+
+function mkSelect(opts, val, onch, ph){
+  const sel = document.createElement('select');
+  const blank = document.createElement('option');
+  blank.value = ''; blank.textContent = ph || 'choose…';
+  sel.appendChild(blank);
+  for (const [v, t] of opts) {
+    const o = document.createElement('option'); o.value = v; o.textContent = t;
+    sel.appendChild(o);
+  }
+  sel.value = val || '';
+  sel.addEventListener('change', () => onch(sel.value));
+  return sel;
+}
+
+function mkNum(val, onch, ph){
+  const i = document.createElement('input');
+  i.type = 'text'; i.inputMode = 'decimal'; i.autocomplete = 'off';
+  i.placeholder = ph || '0'; i.value = val || '';
+  i.addEventListener('input', () => {
+    const raw = i.value.replace(/[^0-9.]/g, '');
+    if (raw !== i.value) i.value = raw;
+    onch(raw);
+  });
+  return i;
+}
+
+function mkText(val, onch, ph){
+  const i = document.createElement('input');
+  i.type = 'text'; i.autocomplete = 'off';
+  i.placeholder = ph || ''; i.value = val || '';
+  i.addEventListener('input', () => onch(i.value));
+  return i;
+}
+
+function otherStores(){
+  const me = ctx().store;
+  return DATA.filter(s => s.store !== me).map(s => [s.store, s.store_name]);
+}
+
+function drawExtras(){
+  const box = el('extras');
+  box.textContent = '';
+  if (scope !== 'extras') { box.hidden = true; return; }
+  box.hidden = false;
+
+  const why = document.createElement('div');
+  why.className = 'why xwhy';
+  why.innerHTML = 'Anything thrown out, moved to another store, or prepped into a batch '
+    + 'leaves without a sale. <b>If nobody writes it down it comes back later as an '
+    + 'unexplained gap</b> in a count, and the kitchen gets blamed for it. This tab can be '
+    + 'sent on its own — you do not have to count anything to report a dumped case.';
+  box.appendChild(why);
+
+  const items = itemOptions();
+
+  // THREW OUT
+  box.appendChild(section('Threw out', 'waste', extras.waste, (rowObj, host) => {
+    host.appendChild(field('item', mkSelect(items, rowObj.sku,
+      v => { const it = items.find(x => x[0] === v); rowObj.sku = v; rowObj.name = it ? it[1] : ''; saveExtras(); }, 'which item…')));
+    host.appendChild(field('cases', mkNum(rowObj.cases, v => { rowObj.cases = v; saveExtras(); })));
+    host.appendChild(field('units', mkNum(rowObj.eaches, v => { rowObj.eaches = v; saveExtras(); })));
+    host.appendChild(field('why', mkSelect(WASTE_REASONS, rowObj.reason,
+      v => { rowObj.reason = v; saveExtras(); }, 'reason…')));
+    host.appendChild(field('note', mkText(rowObj.note, v => { rowObj.note = v; saveExtras(); }, 'optional')));
+  }, () => ({ sku:'', name:'', cases:'', eaches:'', reason:'', note:'' })));
+
+  // MOVED
+  box.appendChild(section('Moved', 'transfers', extras.transfers, (rowObj, host) => {
+    host.appendChild(field('item', mkSelect(items, rowObj.sku,
+      v => { const it = items.find(x => x[0] === v); rowObj.sku = v; rowObj.name = it ? it[1] : ''; saveExtras(); }, 'which item…')));
+    host.appendChild(field('cases', mkNum(rowObj.cases, v => { rowObj.cases = v; saveExtras(); })));
+    host.appendChild(field('units', mkNum(rowObj.eaches, v => { rowObj.eaches = v; saveExtras(); })));
+    host.appendChild(field('direction', mkSelect([['out','sent to'],['in','received from']],
+      rowObj.direction, v => { rowObj.direction = v; saveExtras(); }, 'sent or received…')));
+    host.appendChild(field('other store', mkSelect(otherStores(), rowObj.other,
+      v => { rowObj.other = v; saveExtras(); }, 'which store…')));
+    host.appendChild(field('note', mkText(rowObj.note, v => { rowObj.note = v; saveExtras(); }, 'optional')));
+  }, () => ({ sku:'', name:'', cases:'', eaches:'', direction:'', other:'', note:'' })));
+
+  // MADE
+  box.appendChild(section('Made', 'prep', extras.prep, (rowObj, host) => {
+    host.appendChild(field('batch', mkSelect(SUBS.map(s => [s, s]), rowObj.batch,
+      v => { rowObj.batch = v; saveExtras(); }, 'which batch…')));
+    host.appendChild(field('how many', mkNum(rowObj.batches, v => { rowObj.batches = v; saveExtras(); }, '1')));
+    host.appendChild(field('note', mkText(rowObj.note, v => { rowObj.note = v; saveExtras(); }, 'optional')));
+  }, () => ({ batch:'', batches:'', note:'' })));
+
+  function field(label, control){
+    const f = document.createElement('label'); f.className = 'xf';
+    const l = document.createElement('span'); l.textContent = label;
+    f.appendChild(l); f.appendChild(control);
+    return f;
+  }
+
+  function section(title, key, arr, fill, blank){
+    const sec = document.createElement('div'); sec.className = 'xsec';
+    const h = document.createElement('div'); h.className = 'zhead';
+    h.innerHTML = '<span>' + title + '</span><span>' + arr.length
+      + ' line' + (arr.length === 1 ? '' : 's') + '</span>';
+    sec.appendChild(h);
+    arr.forEach((rowObj, idx) => {
+      const r = document.createElement('div'); r.className = 'xrow';
+      fill(rowObj, r);
+      const del = document.createElement('button');
+      del.type = 'button'; del.className = 'ghost xdel'; del.textContent = 'Remove';
+      del.addEventListener('click', () => { arr.splice(idx, 1); saveExtras(); drawExtras(); });
+      r.appendChild(del);
+      sec.appendChild(r);
+    });
+    const add = document.createElement('button');
+    add.type = 'button'; add.className = 'ghost xadd';
+    add.textContent = arr.length ? '+ another' : '+ add';
+    add.addEventListener('click', () => { arr.push(blank()); saveExtras(); drawExtras(); });
+    sec.appendChild(add);
+    return sec;
+  }
+}
+
+// --- What actually gets filed ----------------------------------------------
+// The scope tells the platform what this submission claims to be. A spot check
+// is not a weekly count and must never be filed as one: a partial list read as
+// a full one turns uncounted shelves into missing food.
+function filedScope(){
+  if (scope === 'extras') return 'extras';
+  const done = rows().filter(i => counted(i[0]));
+  if (!done.length && spotAnswered()) return 'spot';
+  return scope === 'full' ? 'full' : 'weekly';
+}
+
+function payload(){
+  const c = ctx(), rs = rows();
+  const done = rs.filter(i => counted(i[0]));
+  const sp = SPOT.find(x => x.store === c.store);
+  const spot = (sp && spotAnswered()) ? {
+    sku: sp.sku, name: sp.product,
+    cases: +(spotState.c || 0), eaches: +(spotState.e || 0),
+    base_per_case: +sp.base_per_case, base_per_each: +(sp.base_per_each || 0),
+    base_qty: +(((parseFloat(spotState.c || '0') || 0) * (+sp.base_per_case)
+      + (parseFloat(spotState.e || '0') || 0) * (+(sp.base_per_each || 0))).toFixed(4)),
+    base_uom: sp.base_uom
+  } : null;
+  return {
+    // The factors the counter was SHOWN travel with the count. The platform is
+    // told to use these rather than re-deriving them: if a pack size changes
+    // between the count and the ingest, the arithmetic must match what the
+    // person standing in the walk-in was reading, not what the catalogue says
+    // afterwards.
+    lines: done.map(it => ({
+      sku: it[0], name: it[1],
+      cases: +((state[it[0]] || {}).c || 0), eaches: +((state[it[0]] || {}).e || 0),
+      base_per_case: +it[5], base_per_each: +(it[6] || 0),
+      base_qty: +((lineValue(it) || 0).toFixed(4)), base_uom: it[7]
+    })),
+    not_counted: rs.filter(i => !counted(i[0])).map(i => i[0]),
+    spot_item: sp ? { sku: sp.sku, name: sp.product } : null,
+    spot: spot,
+    extras: {
+      waste: extras.waste.filter(r => r.sku && (r.cases || r.eaches)),
+      transfers: extras.transfers.filter(r => r.sku && (r.cases || r.eaches) && r.direction && r.other),
+      prep: extras.prep.filter(r => r.batch)
+    },
+    sheet: { audience: SHEET.audience, scope_shown: scope, list_size: rs.length }
+  };
+}
+
+function report(){
+  const c = ctx(), rs = rows();
+  const done = rs.filter(i => counted(i[0]));
+  const fs = filedScope();
+  const lines = ['HHBC ' + (fs === 'extras' ? 'EXTRAS' : fs === 'spot' ? 'SPOT CHECK' : 'COUNT'),
+    'store: ' + c.store, 'date: ' + c.date, 'by: ' + (el('who').value || '(not given)'),
+    ...(isDeliveryDay() ? ['delivery today: ' + (
+      delivState === 'counted' ? 'yes, put away and INCLUDED in this count'
+      : delivState === 'after' ? 'came after this count (or not put away) — NOT included'
+      : delivState === 'none'  ? 'none came'
+      : 'NOT ANSWERED — the office will treat it as not included')] : []),
+    'scope: ' + fs];
+  if (fs !== 'extras' && fs !== 'spot') {
+    lines.push('counted: ' + done.length + ' of ' + rs.length, '',
+      'sku,item,cases,units,base_qty,uom');
+    for (const it of done) {
+      const v = state[it[0]] || {};
+      lines.push([it[0], '"' + it[1].replace(/"/g, "'") + '"',
+        v.c || 0, v.e || 0, (lineValue(it) || 0).toFixed(2), it[7]].join(','));
+    }
+  }
+  const sp = SPOT.find(x => x.store === c.store);
+  if (sp && fs !== 'extras') {
+    if (spotAnswered()) {
+      const base = (parseFloat(spotState.c || '0') || 0) * (+sp.base_per_case)
+                 + (parseFloat(spotState.e || '0') || 0) * (+(sp.base_per_each || 0));
+      lines.push('', 'SPOT CHECK', 'sku,item,cases,units,base_qty,uom',
+        [sp.sku, '"' + sp.product.replace(/"/g, "'") + '"', spotState.c || 0, spotState.e || 0,
+         base.toFixed(2), sp.base_uom].join(','));
+    } else {
+      lines.push('', 'SPOT CHECK NOT ANSWERED: ' + sp.sku + ' ' + sp.product);
+    }
+  }
+  const x = payload().extras;
+  if (x.waste.length || x.transfers.length || x.prep.length) {
+    lines.push('', 'EXTRAS');
+    for (const w of x.waste)
+      lines.push('  threw out: ' + w.name + ' — ' + (w.cases || 0) + ' case, '
+        + (w.eaches || 0) + ' unit, ' + (w.reason || 'no reason given')
+        + (w.note ? ' (' + w.note + ')' : ''));
+    for (const t of x.transfers)
+      lines.push('  moved: ' + t.name + ' — ' + (t.cases || 0) + ' case, '
+        + (t.eaches || 0) + ' unit, ' + (t.direction === 'in' ? 'received from ' : 'sent to ')
+        + t.other + (t.note ? ' (' + t.note + ')' : ''));
+    for (const p of x.prep)
+      lines.push('  made: ' + p.batch + ' — ' + (p.batches || 1) + ' batch'
+        + (p.note ? ' (' + p.note + ')' : ''));
+  }
+  // A spot check reports as a spot check. It does NOT drag the uncounted list
+  // behind it, because nobody claimed to be counting that list today.
+  if (fs !== 'extras' && fs !== 'spot') {
+    const missed = rs.filter(i => !counted(i[0]));
+    if (missed.length) {
+      lines.push('', 'NOT COUNTED (' + missed.length + ') — these are gaps, not zeros:');
+      for (const m of missed) lines.push('  ' + m[0] + ' ' + m[1]);
+    }
+  }
+  return lines.join('\n');
+}
+
+// --- Filing it -------------------------------------------------------------
+// Walk-ins kill phone signal. A count lost because someone stood next to the
+// cheese is how this habit dies, so the submission is queued locally FIRST and
+// only then sent; a failure keeps it and retries next time the page opens. The
+// screen never says filed without a 2xx.
+const PENDING = 'hhbc.pending';
+function pending(){ try { return JSON.parse(localStorage.getItem(PENDING) || '[]'); } catch (e) { return []; } }
+function setPending(v){ try { localStorage.setItem(PENDING, JSON.stringify(v)); } catch (e) {} }
+
+function queue(sub){
+  const q = pending();
+  // Same store, same date, same scope replaces its predecessor — a manager
+  // fixing a typo and sending again should not file twice.
+  const i = q.findIndex(x => x.store === sub.store && x.count_date === sub.count_date
+    && x.scope === sub.scope);
+  if (i >= 0) q[i] = sub; else q.push(sub);
+  setPending(q);
+}
+
+async function send(sub){
+  const res = await fetch(FILE_URL, {
+    method: 'POST',
+    headers: { 'apikey': FILE_KEY, 'Authorization': 'Bearer ' + FILE_KEY,
+               'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+    body: JSON.stringify(sub)
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + (await res.text()).slice(0, 200));
+  return true;
+}
+
+async function flush(){
+  const q = pending();
+  if (!q.length) return { sent: 0, left: 0 };
+  const left = [];
+  let sent = 0;
+  for (const sub of q) {
+    try { await send(sub); sent++; } catch (e) { left.push(sub); }
+  }
+  setPending(left);
+  return { sent: sent, left: left.length };
+}
+
+function currentSubmission(){
+  return {
+    store: ctx().store,
+    count_date: ctx().date,
+    scope: filedScope(),
+    counted_by: (el('who').value || '').slice(0, 80) || null,
+    delivery_state: (isDeliveryDay() ? delivState : 'none'),
+    payload: payload()
+  };
+}
+
+async function finish(){
+  const fs = filedScope();
+  el('out').textContent = report();
+  el('dlgTitle').textContent = (fs === 'extras' ? 'Extras for ' : fs === 'spot' ? 'Spot check for ' : 'Count for ')
+    + el('store').value + ' · ' + el('date').value;
+  const rs = rows(), done = rs.filter(i => counted(i[0]));
+  el('dlgNote').textContent = fs === 'extras'
+    ? 'Waste, moves and batches only — this is not a count and will not be read as one.'
+    : fs === 'spot'
+      ? 'Spot check only. Nothing else on the list was counted today, and nothing else is being claimed.'
+      : done.length < rs.length
+        ? (rs.length - done.length) + ' line(s) were not counted. They are listed as gaps at the '
+          + 'bottom — a blank is not a zero, and treating it as one would report food you '
+          + 'still have as food you lost.'
+        : 'Every line on this list was counted.';
+
+  queue(currentSubmission());
+  const st = el('saveState');
+  st.className = 'ok'; st.textContent = 'Saved on this phone. Filing…';
+  el('dlg').showModal();
+
+  const r = await flush();
+  if (r.left === 0) {
+    st.className = 'ok';
+    st.textContent = 'FILED — it is in the database.';
+  } else {
+    st.className = 'warn';
+    st.textContent = 'STILL PENDING — no signal. It is saved on this phone and will file '
+      + 'itself next time you open this page. Copy the text if you want it out now.';
+  }
+}
+
+async function boot(){
+  if (SHEET.source === 'remote') {
+    const r = await loadList();
+    if (r.state === 'failed') {
+      // Never render an empty sheet as though the store had nothing to count.
+      const b = el('pendingNote');
+      b.hidden = false; b.className = 'pending bad';
+      b.textContent = 'Could not load the item list (' + r.why + '). Nothing is '
+        + 'missing from your walk-in — this page just cannot reach the database '
+        + 'right now. Try again when you have signal.';
+      return;
+    }
+    if (r.state === 'cached') {
+      const b = el('pendingNote');
+      b.hidden = false;
+      b.textContent = 'Using the list saved on this phone — no signal to check for '
+        + 'a newer one. Counting works normally.';
+    }
+  }
+  const sel = el('store');
+  const allow = SHEET.stores;
+  for (const s of DATA) {
+    if (allow && allow.indexOf(s.store) < 0) continue;
+    const o = document.createElement('option');
+    o.value = s.store; o.textContent = s.store_name;
+    sel.appendChild(o);
+  }
+  if (!sel.options.length) { // never ship a sheet nobody can file from
+    const o = document.createElement('option');
+    o.value = ''; o.textContent = 'no stores on this sheet';
+    sel.appendChild(o);
+  }
+  if (allow && allow.length === 1) sel.disabled = true;
+  else if ([...sel.options].some(o => o.value === 'whyte-ave')) sel.value = 'whyte-ave';
+  el('date').value = today();
+  try { el('who').value = localStorage.getItem('hhbc.who') || ''; } catch (e) {}
+  el('bDelivCounted').addEventListener('click', () => setDeliv('counted'));
+  el('bDelivAfter').addEventListener('click', () => setDeliv('after'));
+  el('bDelivNone').addEventListener('click', () => setDeliv('none'));
+  el('who').addEventListener('input', () => {
+    try { localStorage.setItem('hhbc.who', el('who').value); } catch (e) {}
+  });
+
+  const reload = () => {
+    state = load(KEY(ctx()));
+    spotState = load('hhbc.spot.' + ctx().store + '.' + ctx().date);
+    const x = load(XKEY(ctx()));
+    extras = { waste: x.waste || [], transfers: x.transfers || [], prep: x.prep || [] };
+    loadDeliv();
+    render(); firstNote(); drawSpot(); drawExtras(); drawDeliv();
+  };
+  sel.addEventListener('change', reload);
+  el('date').addEventListener('change', reload);
+  const seg = (which) => {
+    scope = which;
+    for (const [id, val] of [['bWeek','week'], ['bFull','full'], ['bExtras','extras']])
+      el(id).setAttribute('aria-pressed', String(val === which));
+    el('spot').hidden = which === 'extras';
+    el('list').hidden = which === 'extras';
+    render(); drawExtras(); drawDeliv();
+  };
+  el('bWeek').addEventListener('click', () => seg('week'));
+  el('bFull').addEventListener('click', () => seg('full'));
+  el('bExtras').addEventListener('click', () => seg('extras'));
+  el('bClear').addEventListener('click', () => {
+    if (scope === 'extras') {
+      if (!extrasCount()) return;
+      extras = { waste: [], transfers: [], prep: [] }; saveExtras(); drawExtras(); return;
+    }
+    if (!Object.keys(state).length) return;
+    state = {}; save(KEY(ctx()), state); render();
+  });
+  el('bDone').addEventListener('click', finish);
+  el('bClose').addEventListener('click', () => el('dlg').close());
+  el('bCopy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(report()); el('bCopy').textContent = 'Copied'; }
+    catch (e) { el('bCopy').textContent = 'Select the text above'; }
+  });
+  new ResizeObserver(() => document.documentElement.style
+    .setProperty('--stick', el('top').offsetHeight + 'px')).observe(el('top'));
+  reload();
+
+  // Anything stranded by a dead signal last time goes now, quietly.
+  flush().then(r => {
+    if (r.sent) {
+      const b = el('pendingNote');
+      b.hidden = false;
+      b.textContent = r.sent + ' saved submission' + (r.sent === 1 ? '' : 's')
+        + ' filed just now' + (r.left ? '; ' + r.left + ' still waiting for signal.' : '.');
+    } else if (r.left) {
+      const b = el('pendingNote');
+      b.hidden = false;
+      b.textContent = r.left + ' submission' + (r.left === 1 ? '' : 's')
+        + ' still waiting to file — no signal yet.';
+    }
+  });
+}
+
+// The blind daily check. One item, drawn by the platform from this store's own
+// spend, and the expected quantity is deliberately absent — it is not in this
+// page, not in the payload, and not on the phone. A check that shows the answer
+// is a form asking somebody to confirm a number.
+function drawSpot(){
+  const box = el('spot'); box.textContent = '';
+  const s = SPOT.find(x => x.store === ctx().store);
+  if (!s) return;
+  const key = 'hhbc.spot.' + ctx().store + '.' + ctx().date;
+  const saved = spotState;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'spot' + (saved.c || saved.e ? ' done' : '');
+  const lbl = document.createElement('div'); lbl.className = 'lbl';
+  lbl.textContent = 'today’s spot check · ' + s.zone;
+  const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = s.product;
+  const sub = document.createElement('div'); sub.className = 'sub';
+  sub.textContent = s.sku + ' · 1 ' + s.case_label + ' = ' + fmtQty(s.base_per_case, s.base_uom)
+    + (s.base_per_each && s.base_per_each !== s.base_per_case
+        ? ' · 1 ' + s.each_label + ' = ' + fmtQty(s.base_per_each, s.base_uom) : '');
+
+  const fields = document.createElement('div'); fields.className = 'fields';
+  for (const [kind, label] of [['c', s.case_label], ['e', s.each_label]]) {
+    if (kind === 'e' && (!s.base_per_each || s.base_per_each === s.base_per_case)) continue;
+    const f = document.createElement('div'); f.className = 'fld';
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.inputMode = 'decimal'; inp.autocomplete = 'off';
+    inp.setAttribute('aria-label', s.product + ' ' + label);
+    if (saved[kind]) { inp.value = saved[kind]; inp.classList.add('has'); }
+    inp.addEventListener('input', () => {
+      const raw = inp.value.replace(/[^0-9.]/g, '');
+      if (raw !== inp.value) inp.value = raw;
+      saved[kind] = raw; save(key, saved);
+      inp.classList.toggle('has', raw !== '');
+      wrap.classList.toggle('done', !!(saved.c || saved.e));
+      totals();
+    });
+    const lab = document.createElement('span'); lab.textContent = label;
+    f.appendChild(inp); f.appendChild(lab); fields.appendChild(f);
+  }
+
+  const why = document.createElement('div'); why.className = 'why';
+  why.innerHTML = 'Count what is actually there, including part-bags. ' +
+    '<b>Nobody is checking your answer against a number on this screen</b> — the expected ' +
+    'quantity is not on this phone. One check on its own proves nothing; it is the pattern over a ' +
+    'few weeks that shows whether a shelf is drifting. Answer it and hit Finish — that alone ' +
+    'is a valid submission.';
+
+  wrap.appendChild(lbl); wrap.appendChild(nm); wrap.appendChild(sub);
+  wrap.appendChild(fields); wrap.appendChild(why);
+  box.appendChild(wrap);
+}
+
+function firstNote(){
+  // Every store's counts_done is zero today, so this is the first-count wording
+  // for all eight. It is written as a condition rather than hardcoded because
+  // the day it stops being true is the day the sentence becomes wrong.
+  const counted = FIRST_COUNT_DONE.indexOf(ctx().store) >= 0;
+  const n = el('firstNote');
+  n.querySelector('summary').textContent = counted
+    ? 'This count closes a period'
+    : 'This is the first count this store has ever had';
+  n.querySelector('span').innerHTML = counted
+    ? 'The difference between what you count and what the books say should be here is '
+      + 'the first real variance figure for this store.'
+    : 'It sets the starting line and says nothing about shrink — comparing it to a balance '
+      + 'accumulated since the store opened would report years of unrecorded transfers and '
+      + 'estimated portions as if someone had taken them. The count <b>after</b> this one is '
+      + 'the real measurement. Count what is actually there, including the part-bags.';
+}
+
+boot();
+</script>
