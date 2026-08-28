@@ -204,6 +204,13 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
         <button id="bDelivCounted" aria-pressed="false">Yes &mdash; it&rsquo;s counted</button>
         <button id="bDelivAfter" aria-pressed="false">Not yet / came after</button>
         <button id="bDelivNone" aria-pressed="false">No delivery</button>
+      </div>
+      <div id="delivWhen" style="display:none;margin-top:8px;font-size:13px">
+        <label for="delivTime">Put away at</label>
+        <input type="time" id="delivTime" style="margin-left:6px">
+        <div style="font-size:11.5px;opacity:.72;margin-top:4px">
+          Roughly is fine. It tells us which of today&rsquo;s counts already had it on the shelf.
+        </div>
       </span>
     </span>
   </div>
@@ -275,7 +282,17 @@ const FILE_KEY = 'sb_publishable_uCUJqLZuiBa76Dof1OiebA_duOsh0LB';
 
 const WASTE_REASONS = [['spoilage','spoiled'], ['error','kitchen error'],
   ['comp','comped'], ['staff_meal','staff meal'], ['training','training'],
-  ['breakage','breakage']];
+  ['breakage','breakage'],
+  // ARRIVED SPOILED IS NOT THE SAME AS SPOILED, and the difference is money.
+  //
+  // The owner, 2026-08-28: "sometimes items come from gfs spoiled, so they
+  // 'waste it' but we do end up getting credit". Product you paid for and lost
+  // is shrink; product the distributor credits is not yours to lose. Filed as
+  // plain spoilage it lands in the kitchen's variance and stays there even after
+  // the credit arrives. Filed under this reason it is flagged for the credit to
+  // reconcile against, and it gives a number nobody has today: how much GFS
+  // sends us unusable.
+  ['gfs_credit','arrived spoiled — credit requested']];
 
 // WHERE THE ITEM LIST COMES FROM.
 //
@@ -371,6 +388,7 @@ function today(){
 // a skipped one costs a whole truck in the gap.
 // ===================================================================
 let delivState = null;
+let delivTime = null;
 
 function delivDows(storeCode){
   const hit = (DELIV || []).filter(d => d.store === storeCode);
@@ -400,6 +418,12 @@ function drawDeliv(){
   const map = { counted: 'bDelivCounted', after: 'bDelivAfter', none: 'bDelivNone' };
   for (const k in map)
     el(map[k]).setAttribute('aria-pressed', delivState === k ? 'true' : 'false');
+  // Only ask WHEN it went away if they have said it IS in the count. On "came
+  // after" the delivery is not in these numbers at all and the time changes
+  // nothing; on "no delivery" there is nothing to time. One less box on screen
+  // for the two answers that do not need it.
+  const when = el('delivWhen');
+  if (when) when.style.display = (delivState === 'counted') ? '' : 'none';
 }
 
 function setDeliv(v){
@@ -408,12 +432,31 @@ function setDeliv(v){
   drawDeliv();
 }
 
+// WHEN THE DELIVERY WENT ON THE SHELF, typed rather than detected.
+//
+// The owner, 2026-08-28: "maybe on a delivery day we have them enter GFS
+// delivery added to inventory at X time (that one they enter not auto since
+// they will likely get to it later to add?)". Exactly — the truck arrives, the
+// cases sit by the door, and somebody puts them away when they get to it. Only
+// the person who did it knows when.
+//
+// Paired with the per-line count times this stops being a yes/no question: an
+// item counted at 10:19 with the delivery put away at 09:30 HAS the delivery in
+// it, and one counted at 09:00 does not, on the same sheet.
+function setDelivTime(v){
+  delivTime = v || null;
+  try { localStorage.setItem('hhbc.delivt.' + ctx().store + '.' + ctx().date, delivTime || ''); } catch (e) {}
+}
+
 function loadDeliv(){
-  delivState = null;
+  delivState = null; delivTime = null;
   try {
     const v = localStorage.getItem('hhbc.deliv.' + ctx().store + '.' + ctx().date);
     if (v === 'counted' || v === 'after' || v === 'none') delivState = v;
+    const t = localStorage.getItem('hhbc.delivt.' + ctx().store + '.' + ctx().date);
+    if (t) delivTime = t;
   } catch (e) {}
+  const box = el('delivTime'); if (box) box.value = delivTime || '';
 }
 
 function ctx(){ return { store: el('store').value, date: el('date').value }; }
@@ -509,6 +552,19 @@ function onEntry(row, sku, kind, inp){
   if (raw !== inp.value) inp.value = raw;
   state[sku] = state[sku] || {};
   state[sku][kind] = raw;
+  // WHEN THIS LINE WAS COUNTED, not when the sheet was filed.
+  //
+  // The owner, 2026-08-28: "what if i count 5 burgers then someone comes in and
+  // orders 5 burgers before i submit?" A 345-line count at the brewpub can span
+  // ninety minutes, so one submit-time stamp is wrong for everything counted
+  // early. Stamping per line lets the variance subtract usage up to the moment
+  // THAT item was counted rather than to end of day.
+  //
+  // Overwritten on every edit, so the stored time is when they last touched it —
+  // which on iOS is the moment before they hit the keyboard's checkmark and move
+  // on. A time never captured cannot be backfilled, so this is recorded now even
+  // though the variance side does not read it yet.
+  state[sku].t = new Date().toISOString();
   inp.classList.toggle('has', raw !== '');
   row.classList.toggle('done', counted(sku));
   save(KEY(ctx()), state);
@@ -579,6 +635,56 @@ function itemOptions(){
 
 function saveExtras(){ save(XKEY(ctx()), extras); totals(); }
 
+/**
+ * A picker you can type into, for lists too long to scroll.
+ *
+ * The owner, 2026-08-28: "in the extras for waste in half hitch can we add for
+ * waste instead of scrolling the massive list it has a search bar". The brewpub
+ * list is 345 items; a <select> of that length is a scroll wheel nobody will use
+ * twice, and the whole point of the waste tab is that logging a dumped case has
+ * to be faster than not logging it.
+ *
+ * A native <input list> + <datalist> rather than a custom dropdown: iOS renders
+ * it as a normal keyboard with suggestions above, it filters on any substring
+ * (so "moz" finds Shredded Mozzarella), it needs no scroll trapping, and it
+ * degrades to a plain text box if anything goes wrong. The value shown is the
+ * item NAME; the sku is resolved on the way out, because a counter who types a
+ * name that is not on the list must not silently file a blank sku.
+ */
+let _dlSeq = 0;
+function mkSearch(opts, val, onch, ph){
+  const wrap = document.createElement('span');
+  wrap.style.cssText = 'display:block;position:relative';
+  const id = 'dl' + (++_dlSeq);
+  const dl = document.createElement('datalist'); dl.id = id;
+  for (const [v, t] of opts) {
+    const o = document.createElement('option'); o.value = t; o.dataset.sku = v;
+    dl.appendChild(o);
+  }
+  const inp = document.createElement('input');
+  inp.type = 'text'; inp.autocomplete = 'off'; inp.setAttribute('list', id);
+  inp.placeholder = ph || 'type to search…';
+  const cur = opts.find(o => o[0] === val);
+  inp.value = cur ? cur[1] : '';
+  const resolve = () => {
+    const typed = inp.value.trim().toLowerCase();
+    if (!typed) { inp.classList.remove('has', 'bad'); onch(''); return; }
+    let hit = opts.find(o => o[1].toLowerCase() === typed);
+    if (!hit) {
+      const near = opts.filter(o => o[1].toLowerCase().includes(typed));
+      if (near.length === 1) { hit = near[0]; inp.value = hit[1]; }
+    }
+    inp.classList.toggle('has', !!hit);
+    inp.classList.toggle('bad', !hit);
+    onch(hit ? hit[0] : '');
+  };
+  inp.addEventListener('input', resolve);
+  inp.addEventListener('change', resolve);
+  inp.addEventListener('blur', resolve);
+  wrap.appendChild(inp); wrap.appendChild(dl);
+  return wrap;
+}
+
 function mkSelect(opts, val, onch, ph){
   const sel = document.createElement('select');
   const blank = document.createElement('option');
@@ -640,8 +746,8 @@ function drawExtras(){
 
   // THREW OUT
   box.appendChild(section('Threw out', 'waste', extras.waste, (rowObj, host) => {
-    host.appendChild(field('item', mkSelect(items, rowObj.sku,
-      v => { const it = items.find(x => x[0] === v); rowObj.sku = v; rowObj.name = it ? it[1] : ''; saveExtras(); }, 'which item…')));
+    host.appendChild(field('item', mkSearch(items, rowObj.sku,
+      v => { const it = items.find(x => x[0] === v); rowObj.sku = v; rowObj.name = it ? it[1] : ''; saveExtras(); }, 'type to search…')));
     host.appendChild(field('cases', mkNum(rowObj.cases, v => { rowObj.cases = v; saveExtras(); })));
     host.appendChild(field('units', mkNum(rowObj.eaches, v => { rowObj.eaches = v; saveExtras(); })));
     host.appendChild(field('why', mkSelect(WASTE_REASONS, rowObj.reason,
@@ -651,8 +757,8 @@ function drawExtras(){
 
   // MOVED
   box.appendChild(section('Moved', 'transfers', extras.transfers, (rowObj, host) => {
-    host.appendChild(field('item', mkSelect(items, rowObj.sku,
-      v => { const it = items.find(x => x[0] === v); rowObj.sku = v; rowObj.name = it ? it[1] : ''; saveExtras(); }, 'which item…')));
+    host.appendChild(field('item', mkSearch(items, rowObj.sku,
+      v => { const it = items.find(x => x[0] === v); rowObj.sku = v; rowObj.name = it ? it[1] : ''; saveExtras(); }, 'type to search…')));
     host.appendChild(field('cases', mkNum(rowObj.cases, v => { rowObj.cases = v; saveExtras(); })));
     host.appendChild(field('units', mkNum(rowObj.eaches, v => { rowObj.eaches = v; saveExtras(); })));
     host.appendChild(field('direction', mkSelect([['out','sent to'],['in','received from']],
@@ -745,6 +851,7 @@ function payload(){
   const spot = (sp && spotAnswered()) ? {
     sku: sp.sku, name: sp.product,
     cases: +(spotState.c || 0), eaches: +(spotState.e || 0),
+    counted_at: spotState.t || null,
     base_per_case: +sp.base_per_case, base_per_each: +(sp.base_per_each || 0),
     base_qty: +(((parseFloat(spotState.c || '0') || 0) * (+sp.base_per_case)
       + (parseFloat(spotState.e || '0') || 0) * (+(sp.base_per_each || 0))).toFixed(4)),
@@ -759,6 +866,7 @@ function payload(){
     lines: done.map(it => ({
       sku: it[0], name: it[1],
       cases: +((state[it[0]] || {}).c || 0), eaches: +((state[it[0]] || {}).e || 0),
+      counted_at: (state[it[0]] || {}).t || null,
       base_per_case: +it[5], base_per_each: +(it[6] || 0),
       base_qty: +((lineValue(it) || 0).toFixed(4)), base_uom: it[7]
     })),
@@ -882,8 +990,20 @@ function currentSubmission(){
     count_date: ctx().date,
     scope: filedScope(),
     counted_by: (el('who').value || '').slice(0, 80) || null,
-    delivery_state: (isDeliveryDay() ? delivState : 'none'),
-    payload: payload()
+    // THESE TWO RIDE INSIDE payload, NOT AS COLUMNS.
+    //
+    // They were top-level until 2026-08-29, and every submission was being
+    // rejected: PostgREST answers an unknown column with
+    // "Could not find the 'delivery_state' column ... in the schema cache" and a
+    // 400, so the page queued the count, showed STILL PENDING, and retried
+    // forever. Nobody noticed because the failure looks exactly like bad signal
+    // in a walk-in. count_submissions has a fixed set of columns and one jsonb
+    // payload; anything new goes in the jsonb, where adding a field can never
+    // break the insert.
+    payload: Object.assign(payload(), {
+      delivery_state: (isDeliveryDay() ? delivState : 'none'),
+      delivery_put_away_at: (isDeliveryDay() && delivState === 'counted') ? delivTime : null
+    })
   };
 }
 
@@ -981,6 +1101,8 @@ async function boot(){
   el('bDelivCounted').addEventListener('click', () => setDeliv('counted'));
   el('bDelivAfter').addEventListener('click', () => setDeliv('after'));
   el('bDelivNone').addEventListener('click', () => setDeliv('none'));
+  el('delivTime').addEventListener('change', () => setDelivTime(el('delivTime').value));
+  el('delivTime').addEventListener('input',  () => setDelivTime(el('delivTime').value));
   el('who').addEventListener('input', () => {
     try { localStorage.setItem('hhbc.who', el('who').value); } catch (e) {}
   });
@@ -1093,7 +1215,7 @@ function drawSpot(){
     inp.addEventListener('input', () => {
       const raw = inp.value.replace(/[^0-9.]/g, '');
       if (raw !== inp.value) inp.value = raw;
-      saved[kind] = raw; save(key, saved);
+      saved[kind] = raw; saved.t = new Date().toISOString(); save(key, saved);
       inp.classList.toggle('has', raw !== '');
       wrap.classList.toggle('done', !!(saved.c || saved.e));
       totals();
