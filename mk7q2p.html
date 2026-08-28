@@ -95,6 +95,23 @@ select,input[type=date]{font:inherit; font-size:16px; padding:8px 10px; border:1
 .fld input::-webkit-outer-spin-button,.fld input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .fld input:focus{outline:2px solid var(--accent); outline-offset:-1px; border-color:var(--accent)}
 .fld input.has{border-color:var(--accent); font-weight:600}
+.srch{display:block; position:relative}
+.srch input{width:100%; box-sizing:border-box; font:inherit; font-size:16px;
+  padding:8px 9px; border:1px solid var(--line); border-radius:7px; background:var(--card)}
+.srch input:focus{outline:2px solid var(--accent); outline-offset:-1px; border-color:var(--accent)}
+.srch input.has{border-color:var(--accent); font-weight:600}
+.srch input.bad{border-color:#c0392b}
+.srch-menu{position:absolute; z-index:60; left:0; right:0; top:calc(100% + 4px);
+  max-height:46vh; overflow-y:auto; -webkit-overflow-scrolling:touch;
+  background:var(--card); border:1px solid var(--line); border-radius:10px;
+  box-shadow:0 10px 28px rgba(0,0,0,.18)}
+.srch-opt{padding:11px 12px; font-size:15px; line-height:1.25; border-bottom:1px solid var(--line)}
+.srch-opt:last-child{border-bottom:0}
+.srch-opt.on{background:var(--accent); color:#fff}
+.srch-none{padding:11px 12px; font-size:13.5px; opacity:.7}
+.linkish{background:none; border:0; padding:0; font:inherit; font-size:12.5px;
+  color:var(--accent); text-decoration:underline; cursor:pointer}
+.linkish[aria-pressed="true"]{font-weight:700; text-decoration:none}
 .fld span{font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:.08em;
   text-transform:uppercase; color:var(--faint)}
 
@@ -165,6 +182,9 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 .xrow{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:flex-end;
   padding:10px 12px;border-bottom:1px solid var(--line)}
 .xf{display:flex;flex-direction:column;gap:3px;flex:1 1 120px;min-width:0}
+/* The searchable item picker owns a whole line: its menu is as wide as the
+   card, and 345 brewpub item names do not read at 164px. */
+.xf.wide{flex:1 1 100%}
 .xf>span{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)}
 .xf input,.xf select{width:100%;min-width:0;box-sizing:border-box;font:inherit;
   padding:9px 8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:inherit}
@@ -200,16 +220,13 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
   <div class="row" id="delivRow" style="display:none">
     <span class="grow" style="min-width:0">
       <div id="delivQ" style="font-size:13px;margin-bottom:6px"></div>
-      <span class="seg" role="group" aria-label="Today's delivery">
-        <button id="bDelivCounted" aria-pressed="false">Yes &mdash; it&rsquo;s counted</button>
-        <button id="bDelivAfter" aria-pressed="false">Not yet / came after</button>
-        <button id="bDelivNone" aria-pressed="false">No delivery</button>
-      </div>
-      <div id="delivWhen" style="display:none;margin-top:8px;font-size:13px">
-        <label for="delivTime">Put away at</label>
-        <input type="time" id="delivTime" style="margin-left:6px">
+      <div id="delivWhen" style="font-size:13px">
+        <input type="time" id="delivTime">
+        <button id="bDelivNone" class="linkish" aria-pressed="false"
+          style="margin-left:10px">No delivery today</button>
         <div style="font-size:11.5px;opacity:.72;margin-top:4px">
-          Roughly is fine. It tells us which of today&rsquo;s counts already had it on the shelf.
+          Roughly is fine. Every line you count is already timestamped, so the time is
+          all we need to work out which items had it on the shelf and which did not.
         </div>
       </span>
     </span>
@@ -411,23 +428,32 @@ function drawDeliv(){
   const show = isDeliveryDay() && scope !== 'extras';
   el('delivRow').style.display = show ? '' : 'none';
   if (!show) return;
-  const dows = delivDows(ctx().store);
-  el('delivQ').textContent = dows === null
-    ? 'Did a delivery come in today, and is it counted?'
-    : 'Today is a delivery day. Is today\u2019s delivery put away and included in this count?';
-  const map = { counted: 'bDelivCounted', after: 'bDelivAfter', none: 'bDelivNone' };
-  for (const k in map)
-    el(map[k]).setAttribute('aria-pressed', delivState === k ? 'true' : 'false');
-  // Only ask WHEN it went away if they have said it IS in the count. On "came
-  // after" the delivery is not in these numbers at all and the time changes
-  // nothing; on "no delivery" there is nothing to time. One less box on screen
-  // for the two answers that do not need it.
-  const when = el('delivWhen');
-  if (when) when.style.display = (delivState === 'counted') ? '' : 'none';
+  el('delivQ').textContent = 'Today is a delivery day. What time was it put away?';
+  el('bDelivNone').setAttribute('aria-pressed', delivState === 'none' ? 'true' : 'false');
+  const box = el('delivTime');
+  box.disabled = (delivState === 'none');
+  box.style.opacity = (delivState === 'none') ? '.4' : '';
 }
 
+// THE YES/NO QUESTION IS GONE, and the timestamps are why.
+//
+// The owner, 2026-08-29: "for delivery day i think we remove the is it in the
+// count and since we have logs for the entered items now that fixes it and we
+// have on order days, what time was the order put away?"
+//
+// He is right, and the old question was always a worse version of this one. It
+// asked the counter to summarise a whole sheet with one answer — but on a
+// 345-line count at the brewpub the honest answer is usually BOTH: the cases
+// went on the shelf at 09:30, the cooler was counted at 09:00 and the dry
+// storage at 10:20, so half the sheet has the delivery in it and half does not.
+// No single button can say that. A put-away time and a timestamp per line can,
+// and the person only has to know something they actually know.
+//
+// All this button does now is say a truck did not come, which the schedule
+// cannot know on its own.
 function setDeliv(v){
   delivState = (delivState === v) ? null : v;   // tapping again clears it
+  if (delivState === 'none') setDelivTime('');
   try { localStorage.setItem('hhbc.deliv.' + ctx().store + '.' + ctx().date, delivState || ''); } catch (e) {}
   drawDeliv();
 }
@@ -452,7 +478,7 @@ function loadDeliv(){
   delivState = null; delivTime = null;
   try {
     const v = localStorage.getItem('hhbc.deliv.' + ctx().store + '.' + ctx().date);
-    if (v === 'counted' || v === 'after' || v === 'none') delivState = v;
+    if (v === 'none') delivState = v;   // the only state a person still sets
     const t = localStorage.getItem('hhbc.delivt.' + ctx().store + '.' + ctx().date);
     if (t) delivTime = t;
   } catch (e) {}
@@ -644,44 +670,109 @@ function saveExtras(){ save(XKEY(ctx()), extras); totals(); }
  * twice, and the whole point of the waste tab is that logging a dumped case has
  * to be faster than not logging it.
  *
- * A native <input list> + <datalist> rather than a custom dropdown: iOS renders
- * it as a normal keyboard with suggestions above, it filters on any substring
- * (so "moz" finds Shredded Mozzarella), it needs no scroll trapping, and it
- * degrades to a plain text box if anything goes wrong. The value shown is the
- * item NAME; the sku is resolved on the way out, because a counter who types a
- * name that is not on the list must not silently file a blank sku.
+ * This was a native <input list> + <datalist> first. It worked, but the owner
+ * saw it on a phone the same morning: "it isnt dropping down how i wanted its
+ * showing the list in the keyboard suggestions thats messy i want it to drop
+ * down below the typing window". iOS renders a datalist as a strip above the
+ * keyboard, which is the wrong end of the screen and shows three items at a
+ * time. So it is a real menu now, under the box, where a list belongs.
+ *
+ * Two details that matter on a phone. Options commit on POINTERDOWN rather than
+ * click, because iOS blurs the input first and a click on a menu that has
+ * already closed never lands. And matching is per WORD in any order, so
+ * "shred moz" finds "Cheese, Shredded Mozzarella" — nobody types a GFS name
+ * from the left.
+ *
+ * The value shown is the item NAME; the sku is resolved on the way out, because
+ * a counter who types a name that is not on the list must not silently file a
+ * blank sku — the box turns red instead.
  */
-let _dlSeq = 0;
 function mkSearch(opts, val, onch, ph){
   const wrap = document.createElement('span');
-  wrap.style.cssText = 'display:block;position:relative';
-  const id = 'dl' + (++_dlSeq);
-  const dl = document.createElement('datalist'); dl.id = id;
-  for (const [v, t] of opts) {
-    const o = document.createElement('option'); o.value = t; o.dataset.sku = v;
-    dl.appendChild(o);
-  }
+  wrap.className = 'srch';
   const inp = document.createElement('input');
-  inp.type = 'text'; inp.autocomplete = 'off'; inp.setAttribute('list', id);
-  inp.placeholder = ph || 'type to search…';
+  inp.type = 'text'; inp.autocomplete = 'off'; inp.autocapitalize = 'off';
+  inp.spellcheck = false; inp.placeholder = ph || 'type to search…';
   const cur = opts.find(o => o[0] === val);
   inp.value = cur ? cur[1] : '';
-  const resolve = () => {
-    const typed = inp.value.trim().toLowerCase();
-    if (!typed) { inp.classList.remove('has', 'bad'); onch(''); return; }
-    let hit = opts.find(o => o[1].toLowerCase() === typed);
-    if (!hit) {
-      const near = opts.filter(o => o[1].toLowerCase().includes(typed));
-      if (near.length === 1) { hit = near[0]; inp.value = hit[1]; }
-    }
-    inp.classList.toggle('has', !!hit);
-    inp.classList.toggle('bad', !hit);
-    onch(hit ? hit[0] : '');
+  if (cur) inp.classList.add('has');
+
+  const menu = document.createElement('div');
+  menu.className = 'srch-menu'; menu.hidden = true;
+
+  let items = [], active = -1;
+
+  const close = () => { menu.hidden = true; menu.innerHTML = ''; items = []; active = -1; };
+
+  const pick = (o) => {
+    inp.value = o[1]; inp.classList.add('has'); inp.classList.remove('bad');
+    onch(o[0]); close();
   };
-  inp.addEventListener('input', resolve);
-  inp.addEventListener('change', resolve);
-  inp.addEventListener('blur', resolve);
-  wrap.appendChild(inp); wrap.appendChild(dl);
+
+  const open = () => {
+    const q = inp.value.trim().toLowerCase();
+    // Every word has to appear somewhere in the name, in any order, so
+    // "shred moz" finds "Cheese, Shredded Mozzarella" the way a person expects.
+    const words = q ? q.split(/\s+/) : [];
+    items = (words.length
+      ? opts.filter(o => { const n = o[1].toLowerCase(); return words.every(w => n.includes(w)); })
+      : opts).slice(0, 40);
+    menu.innerHTML = '';
+    if (!items.length) {
+      const none = document.createElement('div');
+      none.className = 'srch-none'; none.textContent = 'nothing matches “' + inp.value.trim() + '”';
+      menu.appendChild(none);
+    } else {
+      items.forEach((o, i) => {
+        const row = document.createElement('div');
+        row.className = 'srch-opt'; row.textContent = o[1];
+        row.setAttribute('role', 'option');
+        // pointerdown, NOT click: on iOS the input blurs first and a click on a
+        // menu that has already been hidden never lands. This fires before blur.
+        row.addEventListener('pointerdown', ev => { ev.preventDefault(); pick(o); });
+        menu.appendChild(row);
+      });
+    }
+    active = -1;
+    menu.hidden = false;
+  };
+
+  inp.addEventListener('focus', open);
+  inp.addEventListener('input', () => { inp.classList.remove('has', 'bad'); onch(''); open(); });
+  inp.addEventListener('keydown', ev => {
+    if (menu.hidden) return;
+    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      active = Math.max(0, Math.min(items.length - 1, active + (ev.key === 'ArrowDown' ? 1 : -1)));
+      [...menu.children].forEach((c, i) => c.classList.toggle('on', i === active));
+      const on = menu.children[active]; if (on) on.scrollIntoView({ block: 'nearest' });
+    } else if (ev.key === 'Enter') {
+      ev.preventDefault();
+      if (items.length === 1) pick(items[0]);
+      else if (active >= 0) pick(items[active]);
+    } else if (ev.key === 'Escape') { close(); }
+  });
+  inp.addEventListener('blur', () => {
+    // Give a tap on the menu time to land, then settle: an exact name still
+    // counts, one remaining match is taken, anything else is flagged rather
+    // than silently filed with no sku.
+    setTimeout(() => {
+      close();
+      const typed = inp.value.trim().toLowerCase();
+      if (!typed) { inp.classList.remove('has', 'bad'); onch(''); return; }
+      let hit = opts.find(o => o[1].toLowerCase() === typed);
+      if (!hit) {
+        const w = typed.split(/\s+/);
+        const near = opts.filter(o => { const n = o[1].toLowerCase(); return w.every(x => n.includes(x)); });
+        if (near.length === 1) { hit = near[0]; inp.value = hit[1]; }
+      }
+      inp.classList.toggle('has', !!hit);
+      inp.classList.toggle('bad', !hit);
+      onch(hit ? hit[0] : '');
+    }, 160);
+  });
+
+  wrap.appendChild(inp); wrap.appendChild(menu);
   return wrap;
 }
 
@@ -747,7 +838,8 @@ function drawExtras(){
   // THREW OUT
   box.appendChild(section('Threw out', 'waste', extras.waste, (rowObj, host) => {
     host.appendChild(field('item', mkSearch(items, rowObj.sku,
-      v => { const it = items.find(x => x[0] === v); rowObj.sku = v; rowObj.name = it ? it[1] : ''; saveExtras(); }, 'type to search…')));
+      v => { const it = items.find(x => x[0] === v); rowObj.sku = v; rowObj.name = it ? it[1] : ''; saveExtras(); },
+      'type to search…'), true));
     host.appendChild(field('cases', mkNum(rowObj.cases, v => { rowObj.cases = v; saveExtras(); })));
     host.appendChild(field('units', mkNum(rowObj.eaches, v => { rowObj.eaches = v; saveExtras(); })));
     host.appendChild(field('why', mkSelect(WASTE_REASONS, rowObj.reason,
@@ -758,7 +850,8 @@ function drawExtras(){
   // MOVED
   box.appendChild(section('Moved', 'transfers', extras.transfers, (rowObj, host) => {
     host.appendChild(field('item', mkSearch(items, rowObj.sku,
-      v => { const it = items.find(x => x[0] === v); rowObj.sku = v; rowObj.name = it ? it[1] : ''; saveExtras(); }, 'type to search…')));
+      v => { const it = items.find(x => x[0] === v); rowObj.sku = v; rowObj.name = it ? it[1] : ''; saveExtras(); },
+      'type to search…'), true));
     host.appendChild(field('cases', mkNum(rowObj.cases, v => { rowObj.cases = v; saveExtras(); })));
     host.appendChild(field('units', mkNum(rowObj.eaches, v => { rowObj.eaches = v; saveExtras(); })));
     host.appendChild(field('direction', mkSelect([['out','sent to'],['in','received from']],
@@ -798,8 +891,8 @@ function drawExtras(){
     host.appendChild(field('note', mkText(rowObj.note, v => { rowObj.note = v; saveExtras(); }, 'optional')));
   }, () => ({ batch:'', batches:'', note:'' })));
 
-  function field(label, control){
-    const f = document.createElement('label'); f.className = 'xf';
+  function field(label, control, wide){
+    const f = document.createElement('label'); f.className = 'xf' + (wide ? ' wide' : '');
     const l = document.createElement('span'); l.textContent = label;
     f.appendChild(l); f.appendChild(control);
     return f;
@@ -984,6 +1077,37 @@ async function flush(){
   return { sent: sent, left: left.length };
 }
 
+/**
+ * The old three-way answer, worked out rather than asked for.
+ *
+ * app.book_on_hand still reads delivery_state (migration 131), so it keeps
+ * getting one — but from the clock instead of from a button. Compare the
+ * put-away time against when the lines were actually counted:
+ *   every line counted after it   -> 'counted'  (the whole sheet has it)
+ *   every line counted before it  -> 'after'    (none of the sheet has it)
+ *   some of each                  -> 'counted', the safer of the two, and the
+ *                                    per-line times are in the payload so the
+ *                                    variance can do this properly per item
+ *                                    once it reads them.
+ * No time given on a delivery day is null, not a guess: 131 already treats null
+ * as UNVERIFIED TIMING rather than assuming either way.
+ */
+function derivedDelivState(){
+  if (!isDeliveryDay()) return 'none';
+  if (delivState === 'none') return 'none';
+  if (!delivTime) return null;
+  const [hh, mm] = delivTime.split(':').map(Number);
+  if (!isFinite(hh) || !isFinite(mm)) return null;
+  const d = ctx().date.split('-').map(Number);
+  const away = new Date(d[0], d[1] - 1, d[2], hh, mm).getTime();
+  const times = rows().map(i => (state[i[0]] || {}).t).filter(Boolean)
+                      .map(t => Date.parse(t)).filter(n => isFinite(n));
+  if (!times.length) return null;
+  if (Math.min.apply(null, times) >= away) return 'counted';
+  if (Math.max.apply(null, times) <= away) return 'after';
+  return 'counted';
+}
+
 function currentSubmission(){
   return {
     store: ctx().store,
@@ -1001,8 +1125,8 @@ function currentSubmission(){
     // payload; anything new goes in the jsonb, where adding a field can never
     // break the insert.
     payload: Object.assign(payload(), {
-      delivery_state: (isDeliveryDay() ? delivState : 'none'),
-      delivery_put_away_at: (isDeliveryDay() && delivState === 'counted') ? delivTime : null
+      delivery_state: derivedDelivState(),
+      delivery_put_away_at: (isDeliveryDay() && delivState !== 'none') ? (delivTime || null) : null
     })
   };
 }
@@ -1098,8 +1222,6 @@ async function boot(){
   }
   el('date').value = today();
   try { el('who').value = localStorage.getItem('hhbc.who') || ''; } catch (e) {}
-  el('bDelivCounted').addEventListener('click', () => setDeliv('counted'));
-  el('bDelivAfter').addEventListener('click', () => setDeliv('after'));
   el('bDelivNone').addEventListener('click', () => setDeliv('none'));
   el('delivTime').addEventListener('change', () => setDelivTime(el('delivTime').value));
   el('delivTime').addEventListener('input',  () => setDelivTime(el('delivTime').value));
