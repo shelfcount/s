@@ -888,6 +888,16 @@ function currentSubmission(){
 }
 
 async function finish(){
+  // A submission with no store cannot be filed against anything. Refuse loudly
+  // rather than posting a row nobody can attribute.
+  if (!ctx().store) {
+    const b = el('pendingNote');
+    b.hidden = false; b.className = 'pending bad';
+    b.textContent = 'Pick your store at the top of this page first \u2014 nothing has been filed yet.';
+    try { el('store').focus(); } catch (e) {}
+    window.scrollTo(0, 0);
+    return;
+  }
   const fs = filedScope();
   el('out').textContent = report();
   el('dlgTitle').textContent = (fs === 'extras' ? 'Extras for ' : fs === 'spot' ? 'Spot check for ' : 'Count for ')
@@ -952,7 +962,20 @@ async function boot(){
     sel.appendChild(o);
   }
   if (allow && allow.length === 1) sel.disabled = true;
-  else if ([...sel.options].some(o => o.value === 'whyte-ave')) sel.value = 'whyte-ave';
+  else {
+    // NEVER DEFAULT TO A STORE. This used to preselect Whyte Ave, so a counter at
+    // any other store who did not touch the picker filed their count against the
+    // wrong walk-in. A first count sets the baseline every later number is measured
+    // from, so one mis-filed sheet corrupts two stores at once — the one that was
+    // counted and the one that was credited. The phone remembers whoever counted
+    // on it last; a phone with no memory has to be told.
+    const pick = document.createElement('option');
+    pick.value = ''; pick.textContent = '\u2014 pick your store \u2014';
+    sel.insertBefore(pick, sel.firstChild);
+    let remembered = '';
+    try { remembered = localStorage.getItem('hhbc.store') || ''; } catch (e) {}
+    sel.value = [...sel.options].some(o => o.value === remembered) ? remembered : '';
+  }
   el('date').value = today();
   try { el('who').value = localStorage.getItem('hhbc.who') || ''; } catch (e) {}
   el('bDelivCounted').addEventListener('click', () => setDeliv('counted'));
@@ -971,6 +994,9 @@ async function boot(){
     render(); firstNote(); drawSpot(); drawExtras(); drawDeliv();
   };
   sel.addEventListener('change', reload);
+  sel.addEventListener('change', () => {
+    try { localStorage.setItem('hhbc.store', sel.value); } catch (e) {}
+  });
   el('date').addEventListener('change', reload);
   // THE DAILY SPOT CHECK IS ITS OWN TAB.
   //
