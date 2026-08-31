@@ -527,7 +527,15 @@ function render(){
 
     const fields = document.createElement('div');
     fields.className = 'fields';
-    for (const [kind, label] of [['c', caseLabel], ['e', eachLabel]]) {
+    // Cases and loose units, then whatever else this item is likely to be
+    // sitting in: an insert on the line, a squeeze bottle. Those two boxes were
+    // the whole reason a count could look complete while a walk-in held nine
+    // hundred grams of cheese nobody had a way to write down.
+    const EXTRA = { w: 'w', q: 'q' };
+    const extraDefs = (it[10] || []);
+    const boxes = [['c', caseLabel], ['e', eachLabel],
+                   ...extraDefs.map(x => [x[0], x[1]])];
+    for (const [kind, label] of boxes) {
       if (kind === 'e' && (!basePerEach || basePerEach === basePerCase)) continue;
       const f = document.createElement('div'); f.className = 'fld';
       const inp = document.createElement('input');
@@ -545,7 +553,58 @@ function render(){
     if (counted(sku)) row.classList.add('done');
     wrap.appendChild(row);
   }
+  drawPrep(list);
   totals();
+}
+
+/* WHAT THE KITCHEN MADE THIS MORNING.
+   The tomatoes in a tub of bruschetta have already left their own line — sales
+   consumed them through the recipe — and the tub is on no line at all, so the
+   shelf reads short by exactly one tub. Weighing it closes that. Kept in its own
+   band at the end of the walk because it is the last thing anyone passes, and
+   because it is a different question: not "how much did we buy" but "how much
+   have we already turned into something else". */
+function prepRows(){
+  const s = DATA.find(x => x.store === ctx().store);
+  return (s && s.prep) || [];
+}
+function drawPrep(list){
+  const ps = prepRows();
+  if (!ps.length) return;
+  const h = document.createElement('div');
+  h.className = 'zhead Prepped';
+  h.innerHTML = '<span>Prepped &amp; batched</span><span>' + ps.length + ' item'
+    + (ps.length === 1 ? '' : 's') + '</span>';
+  list.appendChild(h);
+  const wrap = document.createElement('div');
+  list.appendChild(wrap);
+  for (const [name, label, uom] of ps) {
+    const key = 'PREP:' + name;
+    const row = document.createElement('div');
+    row.className = 'item'; row.dataset.sku = key;
+    const nm = document.createElement('div');
+    nm.className = 'nm'; nm.textContent = name;
+    const sub = document.createElement('div');
+    sub.className = 'sub';
+    sub.textContent = label === 'each'
+      ? 'made in house · count how many are ready'
+      : 'made in house · weigh the tub or container, minus the container';
+    const fields = document.createElement('div');
+    fields.className = 'fields';
+    const f = document.createElement('div'); f.className = 'fld';
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.inputMode = 'decimal'; inp.autocomplete = 'off';
+    inp.setAttribute('aria-label', name + ' ' + label);
+    inp.dataset.kind = 'c';
+    const cur = state[key] || {};
+    if (cur.c != null && cur.c !== '') { inp.value = cur.c; inp.classList.add('has'); }
+    inp.addEventListener('input', () => onEntry(row, key, 'c', inp));
+    const lab = document.createElement('span'); lab.textContent = label;
+    f.appendChild(inp); f.appendChild(lab); fields.appendChild(f);
+    row.appendChild(nm); row.appendChild(sub); row.appendChild(fields);
+    if (counted(key)) row.classList.add('done');
+    wrap.appendChild(row);
+  }
 }
 
 // A pack size is a label on a shelf, not a lab result. The sub-kilo branches
@@ -565,10 +624,14 @@ function fmtQty(q, uom){
   return (+q) >= 1000 ? (q/1000).toFixed(2).replace(/\.?0+$/,'') + ' kg' : trim(q) + ' g';
 }
 
+// An item is counted if ANY of its boxes has a number in it. A walk-in holding
+// nothing but an insert of cheese is still a counted walk-in, and treating it
+// as blank would file it as "not counted" and carry the old figure forward.
+const KINDS = ['c', 'e', 'w', 'q'];
 function counted(sku){
   const v = state[sku];
   if (!v) return false;
-  return (v.c != null && v.c !== '') || (v.e != null && v.e !== '');
+  return KINDS.some(k => v[k] != null && v[k] !== '');
 }
 
 function onEntry(row, sku, kind, inp){
@@ -601,7 +664,15 @@ function lineValue(it){
   const [sku,,,,, basePerCase, basePerEach,,, ] = it;
   const v = state[sku]; if (!v) return null;
   const c = parseFloat(v.c || '0') || 0, e = parseFloat(v.e || '0') || 0;
-  return c * (+basePerCase) + e * (+(basePerEach || 0));
+  let total = c * (+basePerCase) + e * (+(basePerEach || 0));
+  // The extra boxes carry their own factor to the base unit: grams are already
+  // grams, a squeeze bottle is 473.176473 ml (16 US fl oz, a definition rather
+  // than a measurement). Both live in the row so one number governs every sheet.
+  for (const x of (it[10] || [])) {
+    const n = parseFloat(v[x[0]] || '0') || 0;
+    if (n) total += n * (+x[2]);
+  }
+  return total;
 }
 
 function spotAnswered(){ return !!(spotState.c || spotState.e); }
@@ -959,11 +1030,25 @@ function payload(){
     lines: done.map(it => ({
       sku: it[0], name: it[1],
       cases: +((state[it[0]] || {}).c || 0), eaches: +((state[it[0]] || {}).e || 0),
+      // What was in an insert and what was in a bottle travel separately from
+      // the case count. A single merged number would hide the thing worth
+      // knowing: how much of this store's stock is already open on the line.
+      grams_in_inserts: +((state[it[0]] || {}).w || 0) || null,
+      squeeze_bottles: +((state[it[0]] || {}).q || 0) || null,
+      extra_units: (it[10] || []),
       counted_at: (state[it[0]] || {}).t || null,
       base_per_case: +it[5], base_per_each: +(it[6] || 0),
       base_qty: +((lineValue(it) || 0).toFixed(4)), base_uom: it[7]
     })),
     not_counted: rs.filter(i => !counted(i[0])).map(i => i[0]),
+    // A batch is not a product and is filed as neither. Its ingredients have
+    // already been deducted from their own lines by the sales that consumed
+    // them, so adding this to stock as a purchase would count the same tomato
+    // twice; leaving it out leaves the tomato missing. It gets its own list.
+    prep_counts: prepRows()
+      .filter(p => counted('PREP:' + p[0]))
+      .map(p => ({ batch: p[0], qty: +((state['PREP:' + p[0]] || {}).c || 0),
+                   uom: p[2], counted_at: (state['PREP:' + p[0]] || {}).t || null })),
     spot_item: sp ? { sku: sp.sku, name: sp.product } : null,
     spot: spot,
     extras: {
