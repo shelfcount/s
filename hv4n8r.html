@@ -85,6 +85,14 @@ select,input[type=date]{font:inherit; font-size:16px; padding:8px 10px; border:1
 .item{border-bottom:1px solid var(--rule-2); background:var(--panel); padding:10px 14px;
   display:grid; grid-template-columns:1fr auto; gap:4px 10px; align-items:center}
 .item.done{background:var(--accent-soft)}
+.item.nostock{background:var(--rail); opacity:.62}
+.item.nostock .sub{color:var(--faint)}
+.nsbtn{font:inherit; font-size:11px; letter-spacing:.04em; text-transform:uppercase;
+  padding:6px 8px; border:1px solid var(--field-rule); border-radius:7px;
+  background:var(--panel); color:var(--muted); cursor:pointer; white-space:nowrap}
+.nsbtn:hover{border-color:var(--crit); color:var(--crit)}
+.item.nostock .nsbtn{border-color:var(--accent); color:var(--accent)}
+.nsnote{font-size:12px; color:var(--muted); grid-column:1/3; margin-top:4px}
 .nm{font-size:14.5px; font-weight:500; line-height:1.3}
 .sub{grid-column:1/2; font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--faint)}
 .fields{grid-column:2/3; grid-row:1/3; display:flex; gap:6px; align-items:center}
@@ -583,8 +591,43 @@ function render(){
       f.appendChild(inp); f.appendChild(lab); fields.appendChild(f);
     }
 
+    // WE DO NOT STOCK THIS.
+    // Greenwich's first count returned 27 zeros out of 135 and the same 27 would
+    // return every week. Declaring it once takes the item off this store's
+    // future sheets, and an invoice for it puts it straight back — so the worst
+    // case of a mis-tap is one week without that line, and it is undoable right
+    // here until the sheet is sent.
+    const ns = document.createElement('button');
+    ns.type = 'button'; ns.className = 'nsbtn';
+    ns.textContent = notStocked(sku) ? "don't stock ✓" : "don't stock";
+    ns.title = 'This store does not carry this item';
+    ns.onclick = () => {
+      const v = state[sku] = state[sku] || {};
+      if (v.ns) { delete v.ns; }
+      else {
+        // Any numbers typed before the declaration are cleared: a line cannot
+        // be both "none of it here" and "we do not carry it".
+        for (const k of KINDS) delete v[k];
+        v.ns = 1;
+        v.t = new Date().toISOString();
+      }
+      save(KEY(ctx()), state);
+      render();
+    };
+    fields.appendChild(ns);
+
     row.appendChild(nm); row.appendChild(sub); row.appendChild(fields);
-    if (counted(sku)) row.classList.add('done');
+    if (notStocked(sku)) {
+      row.classList.add('nostock');
+      for (const i of fields.querySelectorAll('input')) i.disabled = true;
+      const n = document.createElement('div');
+      n.className = 'nsnote';
+      n.textContent = 'not stocked here — it will drop off this sheet, and come '
+        + 'back by itself if it turns up on an invoice';
+      row.appendChild(n);
+    } else if (counted(sku)) {
+      row.classList.add('done');
+    }
     wrap.appendChild(row);
   }
   drawPrep(list);
@@ -662,9 +705,14 @@ function fmtQty(q, uom){
 // nothing but an insert of cheese is still a counted walk-in, and treating it
 // as blank would file it as "not counted" and carry the old figure forward.
 const KINDS = ['c', 'e', 'w', 'q'];
+function notStocked(sku){ return !!(state[sku] && state[sku].ns); }
 function counted(sku){
   const v = state[sku];
   if (!v) return false;
+  // "We do not stock this" is an ANSWER, not a gap. Counting it as uncounted
+  // would leave the sheet permanently unfinishable and hide the real gaps
+  // among the declared ones.
+  if (v.ns) return true;
   return KINDS.some(k => v[k] != null && v[k] !== '');
 }
 
@@ -1061,7 +1109,7 @@ function payload(){
     // between the count and the ingest, the arithmetic must match what the
     // person standing in the walk-in was reading, not what the catalogue says
     // afterwards.
-    lines: done.map(it => ({
+    lines: done.filter(it => !notStocked(it[0])).map(it => ({
       sku: it[0], name: it[1],
       cases: +((state[it[0]] || {}).c || 0), eaches: +((state[it[0]] || {}).e || 0),
       // What was in an insert and what was in a bottle travel separately from
@@ -1075,6 +1123,12 @@ function payload(){
       base_qty: +((lineValue(it) || 0).toFixed(4)), base_uom: it[7]
     })),
     not_counted: rs.filter(i => !counted(i[0])).map(i => i[0]),
+    // A standing decision about the store, not a fact about today's shelf: this
+    // store does not carry these, so they come off its future sheets. Retired
+    // automatically the next time one appears on an invoice here.
+    not_stocked: rs.filter(i => notStocked(i[0]))
+      .map(i => ({ sku: i[0], name: i[1],
+                   declared_at: (state[i[0]] || {}).t || null })),
     // A batch is not a product and is filed as neither. Its ingredients have
     // already been deducted from their own lines by the sales that consumed
     // them, so adding this to stock as a purchase would count the same tomato
