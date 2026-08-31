@@ -340,23 +340,57 @@ function applyList(d){
   DELIV = d.deliv || [];
 }
 
+// A LIST OLDER THAN THE PAGE IS WORSE THAN NO LIST.
+// The page and the list are published by two different routes: the page to
+// GitHub Pages, the list to a Supabase bucket the morning run owns. On 31 August
+// those two drifted — the page gained boxes for what is in an insert and what is
+// in a squeeze bottle, and the bucket still held a list with no such fields, so
+// the new boxes simply did not appear and nothing said why.
+//
+// So a copy of the list ships BESIDE the page, same commit, same origin, and the
+// page refuses a remote list that is missing what it needs. Whichever source is
+// current wins, and the two can never silently disagree again. When the bucket
+// catches up its list has the field and the remote wins on freshness, as it
+// should — this heals itself rather than becoming a second source of truth.
+const wantsExtras = (d) =>
+  (d.stores || []).some(s => (s.items || []).some(i => Array.isArray(i[10])));
+
+async function fetchList(url){
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const body = await r.json();
+  const d = body.data || body;
+  if (!(d.stores || []).length) throw new Error('the published list is empty');
+  return d;
+}
+
 async function loadList(){
   const ck = 'hhbc.list.' + SHEET.name;
   let cached = null;
   try { cached = JSON.parse(localStorage.getItem(ck) || 'null'); } catch (e) {}
   if (cached) applyList(cached);
+
+  const name = encodeURIComponent(SHEET.name);
+  const remote = LIST_URL + name + '.json?t=' + Date.now();
+  const beside = 'count-staff-' + name + '.json?t=' + Date.now();
+
+  let d = null, why = '';
   try {
-    const r = await fetch(LIST_URL + encodeURIComponent(SHEET.name) + '.json?t=' + Date.now());
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const body = await r.json();
-    const d = body.data || body;
-    if (!(d.stores || []).length) throw new Error('the published list is empty');
-    applyList(d);
-    try { localStorage.setItem(ck, JSON.stringify(d)); } catch (e) {}
-    return { state: 'fresh' };
+    d = await fetchList(remote);
+    if (!wantsExtras(d)) {
+      // Not an error to shout about — it just means the bucket has not caught up
+      // with this page yet. Fall through to the copy shipped alongside.
+      throw new Error('the published list predates this page');
+    }
   } catch (e) {
-    return { state: cached ? 'cached' : 'failed', why: e.message };
+    why = e.message;
+    try { d = await fetchList(beside); } catch (e2) { d = null; }
   }
+
+  if (!d) return { state: cached ? 'cached' : 'failed', why: why || 'no list reachable' };
+  applyList(d);
+  try { localStorage.setItem(ck, JSON.stringify(d)); } catch (e) {}
+  return { state: 'fresh' };
 }
 
 // Per-viewer, per-store, per-date. A count gets interrupted — a delivery
