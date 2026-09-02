@@ -361,7 +361,10 @@ function applyList(d){
 // catches up its list has the field and the remote wins on freshness, as it
 // should — this heals itself rather than becoming a second source of truth.
 const wantsExtras = (d) =>
-  (d.stores || []).some(s => (s.items || []).some(i => Array.isArray(i[10])));
+  (d.stores || []).some(s => (s.items || []).some(i => Array.isArray(i[10])))
+  // and the prep list must carry counting variants (dough balls, focaccia
+  // sizes) — a remote list without them would strip those boxes off this page.
+  && (d.stores || []).some(s => (s.prep || []).some(p => p.length > 3));
 
 async function fetchList(url){
   const r = await fetch(url);
@@ -650,36 +653,51 @@ function drawPrep(list){
   if (!ps.length) return;
   const h = document.createElement('div');
   h.className = 'zhead Prepped';
-  h.innerHTML = '<span>Prepped &amp; batched</span><span>' + ps.length + ' item'
-    + (ps.length === 1 ? '' : 's') + '</span>';
+  // count BATCHES, not boxes: dough is one item with two boxes, not two items
+  const nBatches = new Set(ps.map(r => r[0])).size;
+  h.innerHTML = '<span>Prepped &amp; batched</span><span>' + nBatches + ' item'
+    + (nBatches === 1 ? '' : 's') + '</span>';
   list.appendChild(h);
   const wrap = document.createElement('div');
   list.appendChild(wrap);
-  for (const [name, label, uom] of ps) {
-    const key = 'PREP:' + name;
+  // One CARD per batch. A batch counted several ways (dough in 10" and 14"
+  // balls) shows one box per way, side by side — the kitchen's units, the
+  // owner's 1 Sep correction, not the recipe's yield unit.
+  const byBatch = new Map();
+  for (const r of ps) {
+    if (!byBatch.has(r[0])) byBatch.set(r[0], []);
+    byBatch.get(r[0]).push(r);
+  }
+  for (const [name, rows] of byBatch) {
     const row = document.createElement('div');
-    row.className = 'item'; row.dataset.sku = key;
+    row.className = 'item'; row.dataset.sku = 'PREP:' + name;
     const nm = document.createElement('div');
     nm.className = 'nm'; nm.textContent = name;
     const sub = document.createElement('div');
     sub.className = 'sub';
-    sub.textContent = label === 'each'
-      ? 'made in house · count how many are ready'
-      : 'made in house · weigh the tub or container, minus the container';
+    const weighed = rows.some(r => r[2] === 'G' || r[2] === 'ML');
+    sub.textContent = weighed
+      ? 'made in house \u00b7 weigh the tub or container, minus the container'
+      : 'made in house \u00b7 count how many are ready';
     const fields = document.createElement('div');
     fields.className = 'fields';
-    const f = document.createElement('div'); f.className = 'fld';
-    const inp = document.createElement('input');
-    inp.type = 'text'; inp.inputMode = 'decimal'; inp.autocomplete = 'off';
-    inp.setAttribute('aria-label', name + ' ' + label);
-    inp.dataset.kind = 'c';
-    const cur = state[key] || {};
-    if (cur.c != null && cur.c !== '') { inp.value = cur.c; inp.classList.add('has'); }
-    inp.addEventListener('input', () => onEntry(row, key, 'c', inp));
-    const lab = document.createElement('span'); lab.textContent = label;
-    f.appendChild(inp); f.appendChild(lab); fields.appendChild(f);
+    const keys = [];
+    for (const [, label, uom, variant] of rows) {
+      const key = 'PREP:' + name + (variant ? '#' + variant : '');
+      keys.push(key);
+      const f = document.createElement('div'); f.className = 'fld';
+      const inp = document.createElement('input');
+      inp.type = 'text'; inp.inputMode = 'decimal'; inp.autocomplete = 'off';
+      inp.setAttribute('aria-label', name + ' ' + label);
+      inp.dataset.kind = 'c';
+      const cur = state[key] || {};
+      if (cur.c != null && cur.c !== '') { inp.value = cur.c; inp.classList.add('has'); }
+      inp.addEventListener('input', () => onEntry(row, key, 'c', inp));
+      const lab = document.createElement('span'); lab.textContent = label;
+      f.appendChild(inp); f.appendChild(lab); fields.appendChild(f);
+    }
     row.appendChild(nm); row.appendChild(sub); row.appendChild(fields);
-    if (counted(key)) row.classList.add('done');
+    if (keys.some(k => counted(k))) row.classList.add('done');
     wrap.appendChild(row);
   }
 }
@@ -1134,9 +1152,11 @@ function payload(){
     // them, so adding this to stock as a purchase would count the same tomato
     // twice; leaving it out leaves the tomato missing. It gets its own list.
     prep_counts: prepRows()
-      .filter(p => counted('PREP:' + p[0]))
-      .map(p => ({ batch: p[0], qty: +((state['PREP:' + p[0]] || {}).c || 0),
-                   uom: p[2], counted_at: (state['PREP:' + p[0]] || {}).t || null })),
+      .map(p => ({ p, key: 'PREP:' + p[0] + (p[3] ? '#' + p[3] : '') }))
+      .filter(x => counted(x.key))
+      .map(x => ({ batch: x.p[0], variant: x.p[3] || null,
+                   qty: +((state[x.key] || {}).c || 0),
+                   uom: x.p[2], counted_at: (state[x.key] || {}).t || null })),
     spot_item: sp ? { sku: sp.sku, name: sp.product } : null,
     spot: spot,
     extras: {
