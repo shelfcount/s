@@ -811,7 +811,7 @@ function lineRow(kind, recipe, l) {
     a.textContent = said.action === 'confirm' ? 'you said this is right'
       : said.action === 'remove' ? 'you said this is not in it any more'
       : said.action === 'set_qty' ? 'you changed it to ' + said.qty + ' ' + said.uom
-      : said.action === 'repoint' ? 'you swapped it: ' + said.label
+      : said.action === 'repoint' ? 'you changed it: ' + said.label
       : said.label || said.action;
     d.appendChild(a);
     const taps = document.createElement('div');
@@ -923,13 +923,59 @@ function lineRow(kind, recipe, l) {
     qi.focus();
   });
 
-  /* 3. WRONG ITEM. */
+  /* 3. WRONG ITEM — AND, IN THE SAME BREATH, HOW MUCH (owner, 2 Sep 2026):
+        "if its a wrong item, but also wrong qty we can only change the item or
+         the qty not both if its a new item and how much"
+
+        Right: a swapped ingredient almost never keeps the old amount. Two taps
+        also sent TWO rows, and the second could be refused on its own while
+        the first went through, leaving a new ingredient carrying the old
+        ingredient's quantity. So the picker now hands straight over to the
+        amount, and it leaves as ONE repoint carrying both — the loader already
+        applies qty and uom on a repoint, so nothing downstream changes and the
+        two facts can never half-land.
+
+        The amount is pre-filled with what is there, so "same amount, different
+        product" is still pick-then-Save and no typing. */
   tap('Wrong item', '', () => openPicker('What should be in it instead of "' + l.name + '"?', 'any', (p) => {
-    push({ target_kind: kind, recipe_name: recipe, action: 'repoint',
-           from_product_sku: l.sku || null, from_sub_recipe: l.sku ? null : l.name,
-           to_product_sku: p.to_product_sku || null, to_sub_recipe: p.to_sub_recipe || null,
-           label: l.name + ' \u2192 ' + p.label });
-    drawEdit();
+    taps.remove();
+    const box = document.createElement('div');
+    box.className = 'qedit';
+    box.style.flexWrap = 'wrap';
+
+    const said = document.createElement('div');
+    said.className = 'answer';
+    said.style.flex = '1 0 100%';
+    said.textContent = p.label + ' — how much of it?';
+    box.appendChild(said);
+
+    const qi = document.createElement('input');
+    qi.type = 'text'; qi.inputMode = 'decimal';
+    qi.value = hasQty ? l.qty : '';
+    qi.placeholder = 'how much';
+    const us = document.createElement('select');
+    us.innerHTML = LINE_UOMS.map((u) => '<option' + (u === l.uom ? ' selected' : '') + '>' + u + '</option>').join('');
+    const save = document.createElement('button');
+    save.className = 'tap done'; save.textContent = 'Save both';
+    save.onclick = () => {
+      const v = parseFloat(qi.value);
+      if (!(v > 0)) { qi.focus(); return; }
+      const changedQty = !hasQty || v !== Number(l.qty) || us.value !== l.uom;
+      push({ target_kind: kind, recipe_name: recipe, action: 'repoint',
+             from_product_sku: l.sku || null, from_sub_recipe: l.sku ? null : l.name,
+             to_product_sku: p.to_product_sku || null, to_sub_recipe: p.to_sub_recipe || null,
+             qty: v, uom: us.value,
+             label: l.name + ' \u2192 ' + p.label
+               + (changedQty ? ', ' + v + ' ' + us.value
+                             : ', same amount (' + v + ' ' + us.value + ')') });
+      drawEdit();
+    };
+    const cancel = document.createElement('button');
+    cancel.className = 'tap'; cancel.textContent = 'cancel';
+    cancel.onclick = () => drawEdit();
+    box.appendChild(qi); box.appendChild(us); box.appendChild(save); box.appendChild(cancel);
+    d.appendChild(box);
+    qi.focus(); qi.select();
   }));
 
   /* 4. OLD ITEM — the one the owner asked for by name. Not a delete: it
