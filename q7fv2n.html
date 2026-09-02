@@ -267,7 +267,23 @@ function drawQueue() {
   const pend = queue.filter((q) => !q.sent).length;
   el('qtxt').textContent = pend
     ? pend + ' change' + (pend === 1 ? '' : 's') + ' waiting — nothing is saved until you send'
-    : (queue.length ? 'All sent. They apply at the next morning build.' : 'Nothing to send yet');
+    : (queue.length
+        /* WORKING ACROSS TWO DEVICES (owner, 2 Sep 2026): "hes gonna do dishes
+           on his phone and submit, then sauces and batches likely on his
+           computer".
+
+           That works exactly as it should — Send commits to the database and
+           each device keeps its own queue, so two devices never collide and he
+           can send as often as he likes. The one thing that does NOT travel is
+           the green ticks: they live in this browser. Doing the same tab twice
+           on two devices would therefore look untouched the second time, which
+           is how somebody redoes an hour of work. Splitting by tab, which is
+           what he is already doing, avoids it completely — so the page says so
+           rather than leaving him to discover it. */
+        ? 'Sent — safe in the system, applies at the next morning build. '
+          + 'Ticks stay on this device, so if you switch to another one, pick up '
+          + 'with a different tab.'
+        : 'Nothing to send yet');
   el('send').disabled = !pend;
   el('send').textContent = pend ? 'Send ' + pend : 'Sent';
 }
@@ -832,8 +848,9 @@ function lineRow(kind, recipe, l) {
   if (uncostable) {
     const w = document.createElement('div');
     w.className = 'answer crit';
-    w.textContent = 'This amount is fine — we just cannot price it until '
-      + 'someone weighs one. Confirm the amount, and add the weight if you know it.';
+    w.textContent = 'This amount is fine — we just cannot price it until someone '
+      + 'measures one. Confirm the amount, and if you know what one weighs or '
+      + 'holds, add it in whatever unit you think in.';
     d.appendChild(w);
   }
 
@@ -898,27 +915,66 @@ function lineRow(kind, recipe, l) {
     taps.remove();
     const box = document.createElement('div');
     box.className = 'qedit';
+    box.style.flexWrap = 'wrap';
+
+    const said = document.createElement('div');
+    said.className = 'answer';
+    said.style.flex = '1 0 100%';
+    said.textContent = 'What does ONE of these weigh or measure? We multiply by the '
+      + l.qty + ' in the recipe.';
+    box.appendChild(said);
+
     const qi = document.createElement('input');
     qi.type = 'text'; qi.inputMode = 'decimal';
-    qi.placeholder = 'grams for one';
-    const lbl = document.createElement('span');
-    lbl.className = 'stat'; lbl.textContent = 'g each';
+    qi.placeholder = 'for one';
+
+    /* THE UNIT IS HIS TO PICK (owner, 2 Sep 2026):
+         "when we select 'one weighs' we want to be able to switch unit of
+          measurement"
+
+       It was hardcoded to grams, which is fine for a celery stick and useless
+       for a lemon wedge in fluid ounces or a bun somebody knows in pounds. A
+       box that only accepts the unit the system prefers gets the number typed
+       into it in a different unit, and nothing anywhere says so.
+
+       EA is deliberately not on this list: "one of them weighs one each" says
+       nothing, and it is the one answer that would multiply out to the same
+       uncostable line it started as. */
+    const EACH_UOMS = LINE_UOMS.filter((u) => u !== 'EA');
+    const us = document.createElement('select');
+    us.innerHTML = EACH_UOMS.map((u) => '<option' + (u === 'G' ? ' selected' : '') + '>' + u + '</option>').join('');
+
+    const sum = document.createElement('div');
+    sum.className = 'answer';
+    sum.style.flex = '1 0 100%';
+    const restate = () => {
+      const one = parseFloat(qi.value);
+      sum.textContent = one > 0
+        ? l.qty + ' \u00d7 ' + one + ' ' + us.value + ' = '
+          + (Math.round(one * Number(l.qty) * 1000) / 1000) + ' ' + us.value
+        : '';
+    };
+    qi.addEventListener('input', restate);
+    us.addEventListener('change', restate);
+
     const save = document.createElement('button');
     save.className = 'tap done'; save.textContent = 'Save';
     save.onclick = () => {
-      const g = parseFloat(qi.value);
-      if (!(g > 0)) { qi.focus(); return; }
-      const total = Math.round(g * Number(l.qty) * 1000) / 1000;
+      const one = parseFloat(qi.value);
+      if (!(one > 0)) { qi.focus(); return; }
+      const total = Math.round(one * Number(l.qty) * 1000) / 1000;
       push({ target_kind: kind, recipe_name: recipe, action: 'set_qty',
              from_product_sku: l.sku || null, from_sub_recipe: l.sku ? null : l.name,
-             qty: total, uom: 'G',
-             label: l.qty + ' \u00d7 ' + g + ' g each = ' + total + ' g' });
+             qty: total, uom: us.value,
+             label: l.qty + ' \u00d7 ' + one + ' ' + us.value + ' each = '
+               + total + ' ' + us.value });
       drawEdit();
     };
     const cancel = document.createElement('button');
     cancel.className = 'tap'; cancel.textContent = 'cancel';
     cancel.onclick = () => drawEdit();
-    box.appendChild(qi); box.appendChild(lbl); box.appendChild(save); box.appendChild(cancel);
+    box.appendChild(qi); box.appendChild(us); box.appendChild(save); box.appendChild(cancel);
+    box.appendChild(sum);
     d.appendChild(box);
     qi.focus();
   });
