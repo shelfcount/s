@@ -83,12 +83,42 @@ input.nomatch{border-color:var(--crit); background:var(--crit-soft)}
 .chip.q{background:var(--warn-soft); color:var(--warn)}
 .chip.na{background:var(--rule-2); color:var(--faint)}
 .pane{padding:14px}
-.line{display:grid; grid-template-columns:1fr 84px 78px auto; gap:7px; align-items:center;
-  padding:8px 0; border-bottom:1px solid var(--rule-2)}
-.line .ing{font-size:14px}
-.line .ing small{display:block; font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--faint)}
-.line input{padding:7px 8px; font-size:14px}
-.line select{padding:7px 6px; font-size:13px}
+/* A LINE IS A QUESTION WITH FOUR ANSWERS, NOT A FORM (owner, 2 Sep 2026):
+     "i want that but on a checkbox he can go though online like the counter
+      one, he can check yes correct or chaneg item or qty, or check old item"
+   The old row put a text input and a dropdown on every ingredient, so the
+   fast answer — "that one's right" — cost as much attention as the slow one.
+   Now every line reads as a statement with four taps under it, and the taps
+   are thumb-sized because this is used standing up. */
+.line{padding:10px 0; border-bottom:1px solid var(--rule-2)}
+.line:last-child{border-bottom:0}
+.line .ing{font-size:14.5px; line-height:1.3}
+.line .ing small{display:block; font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--faint); margin-top:2px}
+.line .amt{font-family:'IBM Plex Mono',monospace; font-size:15px; font-weight:600; white-space:nowrap}
+.line .amt.none{color:var(--crit); font-weight:500; font-size:13px}
+/* NOT .top. That is the page masthead's class — sticky, z-index 40, white
+   background, 12px padding — and reusing the name gave every ingredient row a
+   white block, a padding it did not ask for, and a stacking context. The
+   answered-line tint appeared to cover only half the row. Second time today a
+   selector collision has produced a bug that reads as a rendering fault. */
+.line .lrow{display:flex; gap:10px; align-items:baseline}
+.line .lrow .ing{flex:1}
+.taps{display:flex; gap:6px; margin-top:8px; flex-wrap:wrap}
+.tap{font:inherit; font-size:13px; padding:8px 11px; border-radius:8px; cursor:pointer;
+  border:1px solid var(--field-rule); background:var(--panel-2); color:var(--ink); flex:0 0 auto}
+.tap:hover{background:var(--accent-soft)}
+.tap.yes{font-weight:600}
+.tap.yes[aria-pressed=true]{background:var(--good); border-color:var(--good); color:var(--accent-ink)}
+.tap.old[aria-pressed=true]{background:var(--crit); border-color:var(--crit); color:#fff}
+.tap.done{background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:600}
+.line.answered{background:var(--good-soft)}
+.line.answered .ing{opacity:.75}
+.line.dropped .ing{text-decoration:line-through; opacity:.55}
+.qedit{display:flex; gap:7px; margin-top:8px; align-items:center}
+.qedit input{padding:9px 10px; font-size:15px; flex:0 0 96px}
+.qedit select{padding:9px 6px; font-size:14px; flex:0 0 86px; width:auto}
+.answer{margin-top:6px; font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--good)}
+.answer.crit{color:var(--crit)}
 .bar{display:flex; gap:8px; flex-wrap:wrap; margin-top:14px}
 .note{background:var(--panel-2); border-left:3px solid var(--accent); padding:9px 12px; font-size:13.5px;
   color:var(--muted); margin:10px 0; border-radius:0 6px 6px 0}
@@ -208,6 +238,22 @@ const uid = () => (crypto && crypto.randomUUID) ? crypto.randomUUID()
 /* An edit already queued against a thing, so the list can show it as handled
    before it is sent — the chef should see his own work immediately. */
 const queuedFor = (kind, name) => queue.filter((q) => q.target_kind === kind && q.recipe_name === name);
+
+/* HOW FAR THROUGH A DISH HE IS.
+   Answering 165 ingredient lines needs a visible bottom to it. Counted by
+   LINE, because a dish where three of four are done and one is left is not
+   the same as one he has never opened. */
+function lineProgress(kind, handle, lines) {
+  const mine = queuedFor(kind, handle);
+  let done = 0;
+  for (const l of lines || []) {
+    const hit = mine.some((q) =>
+      (q.from_product_sku && q.from_product_sku === l.sku)
+      || (!l.sku && q.from_sub_recipe === l.name));
+    if (hit) done++;
+  }
+  return { done, total: (lines || []).length };
+}
 const isNa = (kind, name) => queuedFor(kind, name).some((q) => q.action === 'not_used')
   || (DATA.retired || []).some((r) => r[0] === kind && r[1] === name);
 const isDone = (kind, name) => queuedFor(kind, name).length > 0;
@@ -382,9 +428,10 @@ function drawDishes(v) {
   const n = document.createElement('div');
   n.className = 'note';
   n.textContent = 'Every item on the ' + DATA.menuName + ' boards and the Loft menu, '
-    + 'in the order they are printed. Open one and check the ingredients are the right '
-    + 'products and the amounts are right. If it is right, say so — that is worth as '
-    + 'much as a fix. The ones marked NO RECIPE have nothing behind them at all.';
+    + 'in the order they are printed. Open one and you get its ingredients one per line, '
+    + 'each with four taps: Right, Change amount, Wrong item, Old item. Saying "Right" '
+    + 'is worth as much as a fix — it is the only way an amount stops being a guess. '
+    + 'The ones marked NO RECIPE have nothing behind them at all.';
   v.appendChild(n);
   newBar(v, 'dish');
 
@@ -404,8 +451,11 @@ function drawDishes(v) {
          it rendered as "not checked · 0 ingredients" — which reads as a dish
          somebody merely has not looked at, rather than an empty shell. */
       const empty = it.recipe && !(it.lines || []).length;
+      const prog = lineProgress('dish', it.handle, it.lines);
       const chip = !it.recipe ? ['no', 'no recipe']
         : empty ? ['no', 'recipe is empty']
+        : prog.total && prog.done === prog.total ? ['ok', 'all ' + prog.total + ' answered']
+        : prog.done ? ['q', prog.done + ' of ' + prog.total + ' answered']
         : isDone('dish', it.handle) ? ['ok', 'checked']
         : bad ? ['q', bad + ' unpriced']
         : it.reviewed_by ? ['ok', 'confirmed'] : ['q', 'not checked'];
@@ -633,8 +683,12 @@ function drawEdit() {
 
   /* existing lines */
   if (o.lines && o.lines.length) {
+    const pr = lineProgress(kind, o.handle, o.lines);
     const lh = document.createElement('div');
-    lh.className = 'stat'; lh.style.margin = '14px 0 2px'; lh.textContent = 'What goes in';
+    lh.className = 'stat'; lh.style.margin = '14px 0 2px';
+    lh.textContent = pr.done
+      ? 'What goes in — ' + pr.done + ' of ' + pr.total + ' answered'
+      : 'What goes in — is each one right?';
     pane.appendChild(lh);
     for (const l of o.lines) pane.appendChild(lineRow(kind, o.handle, l));
   }
@@ -669,7 +723,7 @@ function drawEdit() {
 
   if (kind !== 'pos_item' && o.lines && o.lines.length) {
     const ok = document.createElement('button');
-    ok.className = 'btn pri'; ok.textContent = 'This one looks right';
+    ok.className = 'btn pri'; ok.textContent = 'The whole dish is right';
     ok.onclick = () => {
       push({ target_kind: kind, recipe_name: o.handle, action: 'confirm',
              label: 'checked in the kitchen and correct' });
@@ -705,55 +759,128 @@ function drawEdit() {
   w.appendChild(pane);
 }
 
+/* Four answers, and the fast one is first and biggest.
+   "Right" is not a no-op: it promotes the amount from an inherited estimate
+   to a measurement with his name on it, which is the strongest evidence we
+   can get short of a scale. That is why it is sent rather than just ticked
+   locally. */
 function lineRow(kind, recipe, l) {
+  const key = l.sku || l.name;
+  const mine = queuedFor(kind, recipe).filter((q) =>
+    (q.from_product_sku && q.from_product_sku === l.sku)
+    || (!l.sku && q.from_sub_recipe === l.name));
+  const said = mine.length ? mine[mine.length - 1] : null;
+
   const d = document.createElement('div');
-  d.className = 'line';
+  d.className = 'line'
+    + (said && said.action === 'confirm' ? ' answered' : '')
+    + (said && said.action === 'remove' ? ' dropped' : '');
+
+  const top = document.createElement('div');
+  top.className = 'lrow';
   const ing = document.createElement('div');
   ing.className = 'ing';
-  ing.innerHTML = esc(l.name) + '<small>' + esc(l.sku ? 'GFS ' + l.sku : 'house batch')
-    + (l.status && l.status !== 'costed' ? ' · ' + esc(l.status).replace(/_/g, ' ') : '') + '</small>';
-  d.appendChild(ing);
+  ing.innerHTML = esc(l.name) + '<small>' + esc(l.sku ? 'GFS ' + l.sku : 'house batch') + '</small>';
+  const amt = document.createElement('div');
+  const noQty = l.status && l.status !== 'costed';
+  amt.className = 'amt' + (noQty ? ' none' : '');
+  amt.textContent = noQty ? 'no amount yet' : l.qty + ' ' + l.uom;
+  top.appendChild(ing); top.appendChild(amt);
+  d.appendChild(top);
 
-  const qty = document.createElement('input');
-  qty.type = 'text'; qty.inputMode = 'decimal'; qty.value = l.qty;
-  const uom = document.createElement('select');
-  uom.innerHTML = LINE_UOMS.map((u) => '<option' + (u === l.uom ? ' selected' : '') + '>' + u + '</option>').join('');
-  const commit = () => {
-    const v = parseFloat(qty.value);
-    if (!(v > 0)) { qty.value = l.qty; return; }
-    if (v === Number(l.qty) && uom.value === l.uom) return;
-    push({ target_kind: kind, recipe_name: recipe, action: 'set_qty',
-           from_product_sku: l.sku || null, from_sub_recipe: l.sku ? null : l.name,
-           qty: v, uom: uom.value,
-           label: 'was ' + l.qty + ' ' + l.uom + ', now ' + v + ' ' + uom.value });
-    l.qty = v; l.uom = uom.value; drawEdit();
+  /* Already answered: show what he said and let him undo it. Nothing is more
+     confusing than tapping a thing and having it look exactly the same. */
+  if (said) {
+    const a = document.createElement('div');
+    a.className = 'answer' + (said.action === 'remove' ? ' crit' : '');
+    a.textContent = said.action === 'confirm' ? 'you said this is right'
+      : said.action === 'remove' ? 'you said this is not in it any more'
+      : said.action === 'set_qty' ? 'you changed it to ' + said.qty + ' ' + said.uom
+      : said.action === 'repoint' ? 'you swapped it: ' + said.label
+      : said.label || said.action;
+    d.appendChild(a);
+    const taps = document.createElement('div');
+    taps.className = 'taps';
+    const undo = document.createElement('button');
+    undo.className = 'tap'; undo.textContent = 'undo';
+    undo.onclick = () => { queue = queue.filter((x) => x.id !== said.id); saveQueue(); drawQueue(); drawEdit(); };
+    taps.appendChild(undo);
+    d.appendChild(taps);
+    return d;
+  }
+
+  const taps = document.createElement('div');
+  taps.className = 'taps';
+
+  const tap = (label, cls, fn) => {
+    const b = document.createElement('button');
+    b.className = 'tap' + (cls ? ' ' + cls : '');
+    b.textContent = label;
+    b.onclick = fn;
+    taps.appendChild(b);
+    return b;
   };
-  qty.addEventListener('change', commit);
-  uom.addEventListener('change', commit);
-  d.appendChild(qty); d.appendChild(uom);
 
-  const tools = document.createElement('div');
-  const swap = document.createElement('button');
-  swap.className = 'btn sm'; swap.textContent = 'swap';
-  swap.title = 'point this line at a different item';
-  swap.onclick = () => openPicker('Swap "' + l.name + '" for', 'any', (p) => {
+  /* 1. RIGHT. Only offered where there is an amount to be right about. */
+  if (!noQty) tap('\u2713 Right', 'yes', () => {
+    push({ target_kind: kind, recipe_name: recipe, action: 'confirm',
+           from_product_sku: l.sku || null, from_sub_recipe: l.sku ? null : l.name,
+           qty: Number(l.qty), uom: l.uom,
+           label: 'confirmed ' + l.name + ' at ' + l.qty + ' ' + l.uom });
+    drawEdit();
+  });
+
+  /* 2. WRONG AMOUNT — reveals a number pad in place, rather than sitting
+        on the row all the time waiting to be fat-fingered. */
+  tap(noQty ? 'Set the amount' : 'Change amount', '', () => {
+    taps.remove();
+    const box = document.createElement('div');
+    box.className = 'qedit';
+    const qi = document.createElement('input');
+    qi.type = 'text'; qi.inputMode = 'decimal';
+    qi.value = noQty ? '' : l.qty;
+    qi.placeholder = 'how much';
+    const us = document.createElement('select');
+    us.innerHTML = LINE_UOMS.map((u) => '<option' + (u === l.uom ? ' selected' : '') + '>' + u + '</option>').join('');
+    const save = document.createElement('button');
+    save.className = 'tap done'; save.textContent = 'Save';
+    save.onclick = () => {
+      const v = parseFloat(qi.value);
+      if (!(v > 0)) { qi.focus(); return; }
+      push({ target_kind: kind, recipe_name: recipe, action: 'set_qty',
+             from_product_sku: l.sku || null, from_sub_recipe: l.sku ? null : l.name,
+             qty: v, uom: us.value,
+             label: (noQty ? 'set ' : 'was ' + l.qty + ' ' + l.uom + ', now ')
+               + (noQty ? '' : '') + v + ' ' + us.value });
+      drawEdit();
+    };
+    const cancel = document.createElement('button');
+    cancel.className = 'tap'; cancel.textContent = 'cancel';
+    cancel.onclick = () => drawEdit();
+    box.appendChild(qi); box.appendChild(us); box.appendChild(save); box.appendChild(cancel);
+    d.appendChild(box);
+    qi.focus();
+  });
+
+  /* 3. WRONG ITEM. */
+  tap('Wrong item', '', () => openPicker('What should be in it instead of "' + l.name + '"?', 'any', (p) => {
     push({ target_kind: kind, recipe_name: recipe, action: 'repoint',
            from_product_sku: l.sku || null, from_sub_recipe: l.sku ? null : l.name,
            to_product_sku: p.to_product_sku || null, to_sub_recipe: p.to_sub_recipe || null,
-           label: l.name + ' → ' + p.label });
+           label: l.name + ' \u2192 ' + p.label });
     drawEdit();
-  });
-  const del = document.createElement('button');
-  del.className = 'btn sm crit'; del.textContent = '×';
-  del.title = 'this is not in the dish';
-  del.onclick = () => {
+  }));
+
+  /* 4. OLD ITEM — the one the owner asked for by name. Not a delete: it
+        becomes a remove edit the morning build replays and prints. */
+  tap('Old item', 'old', () => {
     push({ target_kind: kind, recipe_name: recipe, action: 'remove',
            from_product_sku: l.sku || null, from_sub_recipe: l.sku ? null : l.name,
-           label: 'not in it: ' + l.name });
+           label: 'not used any more: ' + l.name });
     drawEdit();
-  };
-  tools.appendChild(swap); tools.appendChild(del);
-  d.appendChild(tools);
+  });
+
+  d.appendChild(taps);
   return d;
 }
 
