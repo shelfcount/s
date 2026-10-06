@@ -19,6 +19,7 @@
   --freezer:#2E5E80; --freezer-soft:#E3EDF5;
   --cooler:#2E6B4C; --cooler-soft:#E4F1EA;
   --dry:#8A6A24; --dry-soft:#F6EEDD;
+  --bib:#6A3E7A; --bib-soft:#F0E8F4;
   --field:#FFFFFF; --field-rule:#BFC9C1;
 }
 @media (prefers-color-scheme: dark){
@@ -33,6 +34,7 @@
     --freezer:#83B4D8; --freezer-soft:#16242E;
     --cooler:#7FC49F; --cooler-soft:#17281F;
     --dry:#D6B368; --dry-soft:#291F10;
+    --bib:#C49BD6; --bib-soft:#241A29;
     --field:#0C110F; --field-rule:#3B4742;
   }
 }
@@ -47,6 +49,7 @@
   --freezer:#83B4D8; --freezer-soft:#16242E;
   --cooler:#7FC49F; --cooler-soft:#17281F;
   --dry:#D6B368; --dry-soft:#291F10;
+  --bib:#C49BD6; --bib-soft:#241A29;
   --field:#0C110F; --field-rule:#3B4742;
 }
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
@@ -80,6 +83,7 @@ select,input[type=date]{font:inherit; font-size:16px; padding:8px 10px; border:1
 .zhead.Freezer{background:var(--freezer-soft); color:var(--freezer)}
 .zhead.Cooler{background:var(--cooler-soft); color:var(--cooler)}
 .zhead[class*="Dry"]{background:var(--dry-soft); color:var(--dry)}
+.zhead[class*="BIB"]{background:var(--bib-soft); color:var(--bib)}
 
 /* rows */
 .item{border-bottom:1px solid var(--rule-2); background:var(--panel); padding:10px 14px;
@@ -169,6 +173,13 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
 .dlg .row{justify-content:flex-end}
 .ok{color:var(--good); font-size:13px}
 .err{color:var(--crit); font-size:13px}
+.saved{font-size:12px;color:var(--muted,#6b7280);margin-top:4px}
+.saved.bad{color:#a4322a;font-weight:600}
+.faq{margin:28px 0 40px;border-top:1px solid var(--rule,#d5dbd6);padding-top:14px}
+.faq h2{font-size:15px;margin:0 0 8px}
+.faq details{border-bottom:1px solid var(--rule-2,#e7ece7);padding:8px 0}
+.faq summary{cursor:pointer;font-weight:600;font-size:14px}
+.faq p{margin:6px 0 0;font-size:13.5px;color:var(--muted,#4b5563);max-width:70ch;line-height:1.45}
 </style>
 <style>
 .appbar{position:sticky;top:0;z-index:60;background:var(--panel);border-bottom:1px solid var(--rule);
@@ -251,6 +262,7 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
   </div>
   <div class="meter"><i id="meter"></i></div>
   <div class="stat"><span id="prog">—</span><span id="spendcov">—</span></div>
+  <div class="saved" id="savedNote">entries save on this device as you type</div>
 </div>
 
 <details class="note" id="firstNote"><summary></summary><span></span></details>
@@ -286,6 +298,8 @@ const FIRST_COUNT_DONE = [];
 let SPOT = [];
 let DELIV = [];
 let DATA = [];
+let MADE = [];
+let SHIPTO = [];
 let SUBS = [];
 
 // ---------------------------------------------------------------------------
@@ -341,6 +355,8 @@ const LIST_URL = 'https://xlfftftvvxwyjtzletue.supabase.co/storage/v1/object/pub
 function applyList(d){
   DATA = d.stores || [];
   SUBS = d.subs || [];
+  MADE = d.made || [];
+  SHIPTO = d.shipto || [];
   SPOT = d.spot || [];
   // Delivery weekdays per store. Absent on an older published list, which is
   // why the question falls back to being asked rather than skipped: a missing
@@ -411,7 +427,24 @@ async function loadList(){
 const KEY = d => 'hhbc.count.' + d.store + '.' + d.date;
 const XKEY = d => 'hhbc.extras.' + d.store + '.' + d.date;
 function load(k){ try { return JSON.parse(localStorage.getItem(k) || '{}'); } catch (e) { return {}; } }
-function save(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+let storageOk = true;
+function save(k, v){
+  try { localStorage.setItem(k, JSON.stringify(v)); storageOk = true; }
+  catch (e) { storageOk = false; }
+  savedNote();
+}
+// What the person counting sees about durability. Every keystroke is written
+// to this device the moment it is typed; refresh, phone lock, closed tab all
+// come back to the same numbers. The one case that is NOT true is a private
+// window or a browser that blocks site data, and in that case the page says so
+// rather than letting someone count for an hour on a promise it cannot keep.
+function savedNote(){
+  const n = el('savedNote'); if (!n) return;
+  if (!storageOk) { n.className = 'saved bad'; n.textContent = 'NOT saving on this device (private window?) — a refresh loses this count. Submit before you close.'; return; }
+  const c = Object.keys(state || {}).length;
+  n.className = 'saved';
+  n.textContent = c ? 'saved on this device \u00b7 ' + c + ' line' + (c === 1 ? '' : 's') + ' \u00b7 refresh-safe' : 'entries save on this device as you type';
+}
 
 const el = id => document.getElementById(id);
 let scope = 'week';
@@ -422,7 +455,7 @@ let state = {};
 // on such a device vanished before the report was built. Storage is the
 // durability layer, not the source of truth.
 let spotState = {};
-let extras = { waste: [], transfers: [], prep: [] };
+let extras = { waste: [], transfers: [], prep: [], production: [], shipments: [] };
 
 function today(){
   // Not Date.now-free by choice: the sheet runs in a browser, and the count
@@ -635,6 +668,7 @@ function render(){
   }
   drawPrep(list);
   totals();
+  savedNote();
 }
 
 /* WHAT THE KITCHEN MADE THIS MORNING.
@@ -776,7 +810,8 @@ function lineValue(it){
 }
 
 function spotAnswered(){ return !!(spotState.c || spotState.e); }
-function extrasCount(){ return extras.waste.length + extras.transfers.length + extras.prep.length; }
+function extrasCount(){ return extras.waste.length + extras.transfers.length + extras.prep.length
+  + extras.production.length + extras.shipments.length; }
 
 function totals(){
   const rs = rows();
@@ -1042,7 +1077,14 @@ function drawExtras(){
   // A sheet whose concept has no batches worth logging gets no MADE section at
   // all. An empty picker reads as something broken, and the brewpub genuinely
   // has nothing here.
-  if (!SUBS.length) return;
+  //
+  // This used to be `if (!SUBS.length) return;`, which was fine while it was
+  // the last section on the page and is a trap now that it is not: a store with
+  // no batches would have lost every section written after it.
+  if (SUBS.length) drawPrep();
+  drawMadeGoods();
+
+  function drawPrep(){
   const madeWhy = document.createElement('div');
   madeWhy.className = 'why xwhy';
   madeWhy.innerHTML = '<b>Only the batches listed here.</b> Everything else you prep '
@@ -1061,6 +1103,61 @@ function drawExtras(){
     host.appendChild(field('how many', mkNum(rowObj.batches, v => { rowObj.batches = v; saveExtras(); }, '1')));
     host.appendChild(field('note', mkText(rowObj.note, v => { rowObj.note = v; saveExtras(); }, 'optional')));
   }, () => ({ batch:'', batches:'', note:'' })));
+  }
+
+  function drawMadeGoods(){
+  // MADE TO SHIP, AND SHIPPED
+  //
+  // Greenwich mass-produces the Pawsome pizzas and the frozen pizzas and sends
+  // them to other stores, Half Hitch included. Owner, 9 Sep 2026. Before this
+  // existed those ingredients left Greenwich with nothing recorded against them
+  // and read as shrink, while the store that SOLD the pizza was debited for
+  // flour it never bought — the same pizza counted twice, at two stores,
+  // neither of them right.
+  //
+  // Only shown where there is something to make: a store with no batch-made
+  // dishes gets neither section, because an empty picker reads as broken.
+  // MADE carries [dish, which store makes it]. A null store means every store,
+  // which is the honest default before a second production kitchen exists.
+  const mine = MADE.filter(m => !m[1] || m[1] === ctx().store).map(m => m[0]);
+  if (mine.length) {
+    const mkWhy = document.createElement('div');
+    mkWhy.className = 'why xwhy';
+    mkWhy.innerHTML = '<b>Only what you make in batches and stock</b> &mdash; the Pawsome '
+      + 'and frozen pizzas. Log them the day you make them and the ingredients come off '
+      + '<b>your</b> shelf that day, which is where they actually went. Whoever sells the '
+      + 'pizza later is not charged for it again.';
+    box.appendChild(mkWhy);
+
+    box.appendChild(section('Made to stock', 'production', extras.production, (rowObj, host) => {
+      host.appendChild(field('what', mkSelect(mine.map(m => [m, m]), rowObj.dish,
+        v => { rowObj.dish = v; saveExtras(); }, 'which one…'), true));
+      host.appendChild(field('how many', mkNum(rowObj.made, v => { rowObj.made = v; saveExtras(); }, '0')));
+      host.appendChild(field('note', mkText(rowObj.note, v => { rowObj.note = v; saveExtras(); }, 'optional')));
+    }, () => ({ dish:'', made:'', note:'' })));
+
+    const shipWhy = document.createElement('div');
+    shipWhy.className = 'why xwhy';
+    shipWhy.innerHTML = 'Sending some to another store? The one question that matters is '
+      + '<b>whether you already logged them as made above</b> (or on an earlier day). If you '
+      + 'did, this just moves them. If you did not, this counts them as made today, so the '
+      + 'ingredients still come off correctly &mdash; either way nothing gets counted twice.';
+    box.appendChild(shipWhy);
+
+    box.appendChild(section('Sent to another store', 'shipments', extras.shipments, (rowObj, host) => {
+      host.appendChild(field('what', mkSelect(mine.map(m => [m, m]), rowObj.dish,
+        v => { rowObj.dish = v; saveExtras(); }, 'which one…'), true));
+      host.appendChild(field('how many', mkNum(rowObj.units, v => { rowObj.units = v; saveExtras(); }, '0')));
+      host.appendChild(field('to', mkSelect(SHIPTO.filter(x => x[0] !== ctx().store), rowObj.to,
+        v => { rowObj.to = v; saveExtras(); }, 'which store…')));
+      host.appendChild(field('already logged as made?', mkSelect([
+        ['yes', 'yes — already logged'],
+        ['no',  'no — count them as made today'],
+      ], rowObj.made_state, v => { rowObj.made_state = v; saveExtras(); }, 'yes or no…'), true));
+      host.appendChild(field('note', mkText(rowObj.note, v => { rowObj.note = v; saveExtras(); }, 'optional')));
+    }, () => ({ dish:'', units:'', to:'', made_state:'', note:'' })));
+  }
+  }
 
   function field(label, control, wide){
     const f = document.createElement('label'); f.className = 'xf' + (wide ? ' wide' : '');
@@ -1093,6 +1190,31 @@ function drawExtras(){
   }
 }
 
+/* A COUNT IS NEVER THROWN AWAY BY THE TAB THAT HAPPENS TO BE SHOWING.
+ *
+ * 14 September 2026, Kensington. Somebody counted 102 lines between 20:22 and
+ * 20:56, stopped at the prep band on the way down, went to the Extras tab to
+ * log five spoilage items, and pressed Finish there. rows() returns [] on the
+ * Extras tab, so payload() built lines: [] — and the page said FILED. Thirty-
+ * four minutes of counting sat in localStorage for two days while the report
+ * said the store had never counted. The prep counts came through, because
+ * prepRows() is not scope-filtered and rows() is, which made the submission
+ * look like a finished piece of work to everyone who read it.
+ *
+ * These two functions look at what was COUNTED, not at what is being SHOWN.
+ * The list scope is inferred from the items themselves: anything counted that
+ * is not on the weekly list means the person was working the full list. */
+function countedShelfAnywhere(){
+  const s = store();
+  if (!s) return [];
+  return s.items.filter(i => counted(i[0]) && !notStocked(i[0]));
+}
+function impliedListScope(){
+  const done = countedShelfAnywhere();
+  if (!done.length) return null;
+  return done.some(i => i[9] !== 1) ? 'full' : 'week';
+}
+
 // --- What actually gets filed ----------------------------------------------
 // The scope tells the platform what this submission claims to be. A spot check
 // is not a weekly count and must never be filed as one: a partial list read as
@@ -1116,6 +1238,7 @@ function payload(){
     sku: sp.sku, name: sp.product,
     cases: +(spotState.c || 0), eaches: +(spotState.e || 0),
     counted_at: spotState.t || null,
+    counted_at_local: localStamp(spotState.t),
     base_per_case: +sp.base_per_case, base_per_each: +(sp.base_per_each || 0),
     base_qty: +(((parseFloat(spotState.c || '0') || 0) * (+sp.base_per_case)
       + (parseFloat(spotState.e || '0') || 0) * (+(sp.base_per_each || 0))).toFixed(4)),
@@ -1133,10 +1256,17 @@ function payload(){
       // What was in an insert and what was in a bottle travel separately from
       // the case count. A single merged number would hide the thing worth
       // knowing: how much of this store's stock is already open on the line.
+      // Named for the quantity, not the unit: the brewpub weighs in ounces and
+      // the Mash in grams (see WEIGHS_IN_OUNCES in refresh-count-data.ts), and
+      // the unit that governs is the factor inside extra_units, which travels
+      // on the very next line. The old name is still sent so a submission
+      // queued on a phone before this change still files correctly.
+      opened_weight: +((state[it[0]] || {}).w || 0) || null,
       grams_in_inserts: +((state[it[0]] || {}).w || 0) || null,
       squeeze_bottles: +((state[it[0]] || {}).q || 0) || null,
       extra_units: (it[10] || []),
       counted_at: (state[it[0]] || {}).t || null,
+      counted_at_local: localStamp((state[it[0]] || {}).t),
       base_per_case: +it[5], base_per_each: +(it[6] || 0),
       base_qty: +((lineValue(it) || 0).toFixed(4)), base_uom: it[7]
     })),
@@ -1156,13 +1286,19 @@ function payload(){
       .filter(x => counted(x.key))
       .map(x => ({ batch: x.p[0], variant: x.p[3] || null,
                    qty: +((state[x.key] || {}).c || 0),
-                   uom: x.p[2], counted_at: (state[x.key] || {}).t || null })),
+                   uom: x.p[2], counted_at: (state[x.key] || {}).t || null,
+                   counted_at_local: localStamp((state[x.key] || {}).t) })),
     spot_item: sp ? { sku: sp.sku, name: sp.product } : null,
     spot: spot,
     extras: {
       waste: extras.waste.filter(r => r.sku && (r.cases || r.eaches)),
       transfers: extras.transfers.filter(r => r.sku && (r.cases || r.eaches) && r.direction && r.other),
-      prep: extras.prep.filter(r => r.batch)
+      prep: extras.prep.filter(r => r.batch),
+      production: extras.production.filter(r => r.dish && Number(r.made) > 0),
+      // A shipment needs all four or it cannot be posted: what, how many, to
+      // whom, and whether it was already logged as made. The last one is not a
+      // detail — it decides whether this store's ingredients come off today.
+      shipments: extras.shipments.filter(r => r.dish && Number(r.units) > 0 && r.to && r.made_state)
     },
     sheet: { audience: SHEET.audience, scope_shown: scope, list_size: rs.length }
   };
@@ -1292,13 +1428,89 @@ function derivedDelivState(){
   const [hh, mm] = delivTime.split(':').map(Number);
   if (!isFinite(hh) || !isFinite(mm)) return null;
   const d = ctx().date.split('-').map(Number);
-  const away = new Date(d[0], d[1] - 1, d[2], hh, mm).getTime();
+  const away = wallTimeToUtc(d[0], d[1], d[2], hh, mm);   // Alberta, not the device
   const times = rows().map(i => (state[i[0]] || {}).t).filter(Boolean)
                       .map(t => Date.parse(t)).filter(n => isFinite(n));
   if (!times.length) return null;
   if (Math.min.apply(null, times) >= away) return 'counted';
   if (Math.max.apply(null, times) <= away) return 'after';
   return 'counted';
+}
+
+/* THE CLOCK ON THE WALL, NOT THE CLOCK IN THE FILE.
+   Every counted_at above is UTC and ends in Z, which is right — one unambiguous
+   instant, no daylight-saving argument. But nobody standing in a kitchen in
+   Cochrane thinks in UTC, and on 17 September 2026 a reader took an 18:27Z
+   stamp for half past six in the evening. It was 12:27 in the afternoon. The
+   delivery had been put away at 15:30, so that reading moved a whole GFS truck
+   from outside the count to inside it, which is a four-figure error in what the
+   kitchen is judged to have used.
+
+   So every timestamp now travels twice: the UTC instant that the build reads,
+   and the local wall time a person would have seen. The local one is a label —
+   nothing computes from it — but it is the one a human checks against. */
+const TZ = 'America/Edmonton';
+function localStamp(iso){
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d)) return null;
+  try {
+    const f = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', timeZoneName: 'short' });
+    const p = {};
+    for (const x of f.formatToParts(d)) p[x.type] = x.value;
+    return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute} ${p.timeZoneName}`;
+  } catch (e) { return null; }
+}
+
+/* THE PUT-AWAY TIME IS A WALL CLOCK, THE COUNT STAMPS ARE INSTANTS.
+   derivedDelivState used to build the put-away instant with
+   new Date(y, m, d, hh, mm), which is midnight-to-midnight in whatever zone the
+   COUNTING DEVICE happens to be set to. On a tablet sitting in Cochrane that is
+   right by accident. On a phone still set to another province, or one whose
+   zone has drifted, "15:30" becomes a different instant and a whole GFS truck
+   moves into or out of the count without anybody touching the sheet.
+   The brewpub's clock is the brewpub's clock, so the conversion names it. */
+function tzOffsetMs(utcMs){
+  const f = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const p = {};
+  for (const x of f.formatToParts(new Date(utcMs))) p[x.type] = x.value;
+  return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - utcMs;
+}
+function wallTimeToUtc(y, mo, da, hh, mm){
+  const naive = Date.UTC(y, mo - 1, da, hh, mm);
+  let t = naive;
+  for (let i = 0; i < 2; i++) t = naive - tzOffsetMs(t);   // settles across a DST edge
+  return t;
+}
+
+/* The counting window and the delivery call, written out for a person.
+   derivedDelivState() returns 'counted' / 'after' / 'none' / null, which is
+   exact and completely opaque — "after" means the truck came AFTER the count
+   and is therefore NOT in it, and that has already been read the wrong way
+   round once. So the payload also carries a sentence that cannot be misread. */
+function countWindowLocal(){
+  const ts = (payload().lines || []).map((l) => l.counted_at).filter(Boolean)
+               .map((t) => Date.parse(t)).filter((n) => isFinite(n));
+  if (!ts.length) return null;
+  return { from: localStamp(new Date(Math.min.apply(null, ts)).toISOString()),
+           to:   localStamp(new Date(Math.max.apply(null, ts)).toISOString()) };
+}
+function deliveryNote(){
+  const st = derivedDelivState();
+  const away = (isDeliveryDay() && delivState !== 'none') ? (delivTime || null) : null;
+  if (st === 'none')    return 'No delivery on this count day.';
+  if (st === null)      return 'Delivery day, but no put-away time was given — '
+    + 'whether the delivery is in this count is UNKNOWN, do not assume either way.';
+  const w = countWindowLocal();
+  const when = w ? ` Counting ran ${w.from} to ${w.to} local.` : '';
+  if (st === 'counted') return `The delivery was put away at ${away} local, BEFORE the count. `
+    + `It IS included in these figures.` + when;
+  return `Counting finished BEFORE the delivery was put away at ${away} local. `
+    + `The delivery is NOT included in these figures.` + when;
 }
 
 function currentSubmission(){
@@ -1319,7 +1531,13 @@ function currentSubmission(){
     // break the insert.
     payload: Object.assign(payload(), {
       delivery_state: derivedDelivState(),
-      delivery_put_away_at: (isDeliveryDay() && delivState !== 'none') ? (delivTime || null) : null
+      delivery_put_away_at: (isDeliveryDay() && delivState !== 'none') ? (delivTime || null) : null,
+      /* Local-time companions. Nothing computes from these — the build reads
+         the UTC stamps — but they are what a person checks against. */
+      timezone: TZ,
+      counted_local: countWindowLocal(),
+      delivery_note: deliveryNote(),
+      submitted_at_local: localStamp(new Date().toISOString())
     })
   };
 }
@@ -1335,6 +1553,14 @@ async function finish(){
     window.scrollTo(0, 0);
     return;
   }
+  // Before anything is built: if this is an extras or spot submission and there
+  // are counted shelf lines sitting in state, the person counted and has not
+  // filed it. Switch to the list they were working — seg() re-renders, so the
+  // dialog, the report and the payload are all built from the right scope, and
+  // they can see the list they counted rather than being told it went somewhere.
+  const rescued = (scope === 'extras' || scope === 'spot') ? impliedListScope() : null;
+  if (rescued) seg(rescued);
+
   const fs = filedScope();
   el('out').textContent = report();
   el('dlgTitle').textContent = (fs === 'extras' ? 'Extras for ' : fs === 'spot' ? 'Spot check for ' : 'Count for ')
@@ -1349,6 +1575,12 @@ async function finish(){
           + 'bottom — a blank is not a zero, and treating it as one would report food you '
           + 'still have as food you lost.'
         : 'Every line on this list was counted.';
+  if (rescued) {
+    el('dlgNote').textContent = 'You had ' + countedShelfAnywhere().length
+      + ' line(s) counted that were not filed yet, so this is being filed as the '
+      + (rescued === 'full' ? 'full' : 'weekly') + ' count, with your waste and batches on it. '
+      + el('dlgNote').textContent;
+  }
 
   queue(currentSubmission());
   const st = el('saveState');
@@ -1426,7 +1658,8 @@ async function boot(){
     state = load(KEY(ctx()));
     spotState = load('hhbc.spot.' + ctx().store + '.' + ctx().date);
     const x = load(XKEY(ctx()));
-    extras = { waste: x.waste || [], transfers: x.transfers || [], prep: x.prep || [] };
+    extras = { waste: x.waste || [], transfers: x.transfers || [], prep: x.prep || [],
+               production: x.production || [], shipments: x.shipments || [] };
     loadDeliv();
     render(); firstNote(); drawSpot(); drawExtras(); drawDeliv();
   };
@@ -1459,19 +1692,48 @@ async function boot(){
   el('bWeek').addEventListener('click', () => seg('week'));
   el('bFull').addEventListener('click', () => seg('full'));
   el('bExtras').addEventListener('click', () => seg('extras'));
+  // CLEAR ASKS FIRST AND CAN BE UNDONE. The manager's question was "what if
+  // someone hits the wrong button" — this was the button. Before: one tap wiped
+  // an hour of counting with no confirmation and no way back. Now it names what
+  // it is about to erase, and keeps a copy under an undo key until the next
+  // clear on this device, with an Undo link where the eye already is.
   el('bClear').addEventListener('click', () => {
+    let n = 0, what = '';
+    if (scope === 'spot') { if (!spotAnswered()) return; n = Object.keys(spotState).length; what = 'spot-check answer'; }
+    else if (scope === 'extras') { n = extrasCount(); if (!n) return; what = 'waste / move / batch line'; }
+    else { n = Object.keys(state).length; if (!n) return; what = 'counted line'; }
+    const label = n + ' ' + what + (n === 1 ? '' : 's') + ' for ' + (el('store').value || 'this store') + ' on ' + el('date').value;
+    if (!window.confirm('Clear ' + label + '?\n\nThis erases what has been typed on this device. You can undo it right after.')) return;
+    const c = ctx();
     if (scope === 'spot') {
-      if (!spotAnswered()) return;
-      spotState = {}; save('hhbc.spot.' + ctx().store + '.' + ctx().date, spotState);
-      drawSpot(); totals(); return;
+      save('hhbc.undo.' + c.store + '.' + c.date, { scope: 'spot', data: spotState, label });
+      spotState = {}; save('hhbc.spot.' + c.store + '.' + c.date, spotState); drawSpot(); totals();
+    } else if (scope === 'extras') {
+      save('hhbc.undo.' + c.store + '.' + c.date, { scope: 'extras', data: extras, label });
+      extras = { waste: [], transfers: [], prep: [], production: [], shipments: [] }; saveExtras(); drawExtras();
+    } else {
+      save('hhbc.undo.' + c.store + '.' + c.date, { scope: 'count', data: state, label });
+      state = {}; save(KEY(c), state); render();
     }
-    if (scope === 'extras') {
-      if (!extrasCount()) return;
-      extras = { waste: [], transfers: [], prep: [] }; saveExtras(); drawExtras(); return;
-    }
-    if (!Object.keys(state).length) return;
-    state = {}; save(KEY(ctx()), state); render();
+    offerUndo();
   });
+  function offerUndo(){
+    const c = ctx(); const u = load('hhbc.undo.' + c.store + '.' + c.date);
+    const b = el('pendingNote');
+    if (!u || !u.scope) return;
+    b.hidden = false; b.className = 'pending';
+    b.textContent = 'Cleared ' + u.label + '. ';
+    const a = document.createElement('a'); a.href = '#'; a.textContent = 'Undo';
+    a.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      if (u.scope === 'spot') { spotState = u.data || {}; save('hhbc.spot.' + c.store + '.' + c.date, spotState); drawSpot(); totals(); }
+      else if (u.scope === 'extras') { extras = u.data || { waste: [], transfers: [], prep: [], production: [], shipments: [] }; saveExtras(); drawExtras(); }
+      else { state = u.data || {}; save(KEY(c), state); render(); }
+      try { localStorage.removeItem('hhbc.undo.' + c.store + '.' + c.date); } catch (e) {}
+      b.textContent = 'Restored ' + u.label + '.'; setTimeout(() => { b.hidden = true; }, 4000);
+    });
+    b.appendChild(a);
+  }
   el('bDone').addEventListener('click', finish);
   el('bClose').addEventListener('click', () => el('dlg').close());
   el('bCopy').addEventListener('click', async () => {
@@ -1571,3 +1833,27 @@ function firstNote(){
 
 boot();
 </script>
+
+<section class="faq" id="faq">
+  <h2>Questions people ask</h2>
+  <details><summary>Does it save as I go? What if the page refreshes or my phone locks?</summary>
+    <p>Yes. Every number is saved on this device the moment you type it, per store and per date. Refresh, lock the phone, close the tab, come back tomorrow — same numbers. The line under the progress bar says “saved on this device”. If it says NOT saving, you are in a private window; submit before you close.</p></details>
+  <details><summary>I hit Clear by mistake.</summary>
+    <p>Clear now asks first, and right after clearing there is an Undo link at the top of the list. Undo works until the next Clear on this device.</p></details>
+  <details><summary>Can I start on one device and finish on another?</summary>
+    <p>Not yet — the in-progress count lives on the device you typed it on. Finish and Submit on the same phone or tablet. (Once it is submitted, it is in the database and no longer depends on the device.)</p></details>
+  <details><summary>What is the difference between Daily spot, Weekly key and Full count?</summary>
+    <p><b>Daily spot</b> is a handful of high-value items — a few minutes, and it only claims the items you answered. <b>Weekly key</b> is the shorter list the numbers are run on every week. <b>Full count</b> is everything. <b>Extras</b> is for waste, moves between stores and prep batches; it is not a count and is never read as one.</p></details>
+  <details><summary>I did not get to every line. Can I still submit?</summary>
+    <p>Yes. Lines you did not count are listed as gaps, not as zeros. A blank means “not counted”; typing 0 means “I looked and there were none”. Those are different things and the report treats them differently.</p></details>
+  <details><summary>An item is not on my list.</summary>
+    <p>The list comes from what your store has actually been invoiced for. If something is genuinely on your shelf and not on the list, tell the office and it will be added for next time. It is deliberately not typed in freehand today — a name typed two different ways becomes two items nobody can reconcile.</p></details>
+  <details><summary>A delivery came today. Do I count it?</summary>
+    <p>Answer the delivery question at the top (put away before or after you counted). The report uses that to line your count up with the invoice. Count what is physically there when you count it, including the part-bags.</p></details>
+  <details><summary>I submitted the wrong numbers.</summary>
+    <p>Fix the line and Submit again for the same store and date. The newest submission for that store, date and count type is the one that counts; the earlier one is superseded, not added to it.</p></details>
+  <details><summary>It says “STILL PENDING — no signal”.</summary>
+    <p>The count is saved on this device and will file itself the next time this page is opened with signal. Nothing is lost. You can also copy the text out of the box if you want it sent another way.</p></details>
+  <details><summary>Who sees this?</summary>
+    <p>The office. Counts feed the morning food-cost report for your store. Nobody is graded on a single count; the point is that the numbers are real.</p></details>
+</section>
