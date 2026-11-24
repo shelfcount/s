@@ -1212,7 +1212,24 @@ function countedShelfAnywhere(){
 function impliedListScope(){
   const done = countedShelfAnywhere();
   if (!done.length) return null;
-  return done.some(i => i[9] !== 1) ? 'full' : 'week';
+  return (!weeklyOffered() || done.some(i => i[9] !== 1)) ? 'full' : 'week';
+}
+
+/* ONE COUNT AT THE MASH.
+ *
+ * The owner, 24 Nov 2026: "we should make the count be just the full one for
+ * mashes ... otherwise they'll never do the full only the weekly so we just
+ * make it one count". They didn't: between 9 Oct and 22 Nov Legacy filed three
+ * weekly counts of 28-31 lines and no full one, so the pop and juice, which
+ * are only on the full list, went six weeks uncounted. A Mash store now gets
+ * one list with every item on it; the brewpub keeps its weekly key list.
+ *
+ * Decided by the store picked, not by which copy of the sheet this is, so the
+ * manager sheet behaves exactly like the staff one. The week flags stay in the
+ * data: the brewpub uses them, and they cost the Mash nothing. */
+function weeklyOffered(){
+  const s = el('store');
+  return !!s && s.value === 'cochrane';
 }
 
 // --- What actually gets filed ----------------------------------------------
@@ -1692,6 +1709,16 @@ async function boot(){
   el('bWeek').addEventListener('click', () => seg('week'));
   el('bFull').addEventListener('click', () => seg('full'));
   el('bExtras').addEventListener('click', () => seg('extras'));
+  // A Mash store has no weekly tab (weeklyOffered, above). Checked on load and
+  // on every change of store, so a phone that last showed the weekly list opens
+  // on the full one, and a manager switching from the brewpub to a Mash store
+  // is moved off a tab that no longer exists.
+  const scopeRule = () => {
+    el('bWeek').hidden = !weeklyOffered();
+    if (scope === 'week' && !weeklyOffered()) seg('full');
+  };
+  sel.addEventListener('change', scopeRule);
+  scopeRule();
   // CLEAR ASKS FIRST AND CAN BE UNDONE. The manager's question was "what if
   // someone hits the wrong button" — this was the button. Before: one tap wiped
   // an hour of counting with no confirmation and no way back. Now it names what
@@ -1843,7 +1870,7 @@ boot();
   <details><summary>Can I start on one device and finish on another?</summary>
     <p>Not yet — the in-progress count lives on the device you typed it on. Finish and Submit on the same phone or tablet. (Once it is submitted, it is in the database and no longer depends on the device.)</p></details>
   <details><summary>What is the difference between Daily spot, Weekly key and Full count?</summary>
-    <p><b>Daily spot</b> is a handful of high-value items — a few minutes, and it only claims the items you answered. <b>Weekly key</b> is the shorter list the numbers are run on every week. <b>Full count</b> is everything. <b>Extras</b> is for waste, moves between stores and prep batches; it is not a count and is never read as one.</p></details>
+    <p><b>Daily spot</b> is a handful of high-value items — a few minutes, and it only claims the items you answered. <b>Full count</b> is everything, and at the Mash stores it is the only count. <b>Weekly key</b> is the brewpub's shorter list of its biggest items; it does not appear for a Mash store. <b>Extras</b> is for waste, moves between stores and prep batches; it is not a count and is never read as one.</p></details>
   <details><summary>I did not get to every line. Can I still submit?</summary>
     <p>Yes. Lines you did not count are listed as gaps, not as zeros. A blank means “not counted”; typing 0 means “I looked and there were none”. Those are different things and the report treats them differently.</p></details>
   <details><summary>An item is not on my list.</summary>
